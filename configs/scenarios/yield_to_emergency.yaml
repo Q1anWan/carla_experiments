@@ -1,0 +1,20 @@
+id: yield_to_emergency
+map: Town04
+weather: ClearNoon
+seed: 15
+duration: 20.0
+fps: 20
+fixed_delta_seconds: 0.05
+sync_mode: true
+no_rendering_mode: false
+ego_vehicle: vehicle.tesla.model3
+camera:
+  width: 1280
+  height: 720
+  fov: 90
+  fps: 20
+  preset: driver
+scenario:
+  ego_spawn_index: 12
+  emergency_boost_frames: 40
+  emergency_throttle: 0.75

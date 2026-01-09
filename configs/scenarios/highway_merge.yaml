@@ -1,0 +1,22 @@
+id: highway_merge
+map: Town04
+weather: ClearNoon
+seed: 42
+duration: 25.0
+fps: 20
+fixed_delta_seconds: 0.05
+sync_mode: true
+no_rendering_mode: false
+ego_vehicle: vehicle.tesla.model3
+camera:
+  width: 1280
+  height: 720
+  fov: 90
+  fps: 20
+  preset: driver
+scenario:
+  ego_spawn_index: 10
+  merge_trigger_frame: 40
+  merge_duration_frames: 30
+  merge_throttle: 0.6
+  merge_steer: 0.2

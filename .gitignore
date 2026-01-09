@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.pytest_cache/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+
+# Generated runs & debug outputs
+runs/
+debug/
+frames/
+variants/
+*.mp4
+*.wav
+*.png
+
+# Logs
+*.log
+
+# Core dumps
+core
+core.*

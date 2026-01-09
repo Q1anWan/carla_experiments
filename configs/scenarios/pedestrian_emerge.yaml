@@ -1,0 +1,20 @@
+id: pedestrian_emerge
+map: Town05
+weather: ClearNoon
+seed: 11
+duration: 18.0
+fps: 20
+fixed_delta_seconds: 0.05
+sync_mode: true
+no_rendering_mode: false
+ego_vehicle: vehicle.tesla.model3
+camera:
+  width: 1280
+  height: 720
+  fov: 90
+  fps: 20
+  preset: driver
+scenario:
+  ego_spawn_index: 6
+  trigger_distance: 12.0
+  cross_offset: 8.0

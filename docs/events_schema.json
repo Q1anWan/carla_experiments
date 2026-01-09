@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "events.json",
+  "type": "object",
+  "properties": {
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "number",
+            "description": "Seconds from start"
+          },
+          "type": {
+            "type": "string",
+            "description": "Decision event type"
+          },
+          "decision_text": {
+            "type": "string"
+          },
+          "reason_text": {
+            "type": "string"
+          },
+          "robot_precue_t": {
+            "type": "number",
+            "description": "Robot precue time (t - 0.5s)"
+          }
+        },
+        "required": ["t", "type", "decision_text", "reason_text", "robot_precue_t"]
+      }
+    },
+    "variant": {
+      "type": "object",
+      "properties": {
+        "voice_level": {"type": "integer"},
+        "robot_mode": {"type": "integer"}
+      }
+    }
+  },
+  "required": ["events"]
+}

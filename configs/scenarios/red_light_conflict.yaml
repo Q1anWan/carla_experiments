@@ -1,0 +1,18 @@
+id: red_light_conflict
+map: Town03
+weather: ClearNoon
+seed: 33
+duration: 18.0
+fps: 20
+fixed_delta_seconds: 0.05
+sync_mode: true
+no_rendering_mode: false
+ego_vehicle: vehicle.tesla.model3
+camera:
+  width: 1280
+  height: 720
+  fov: 90
+  fps: 20
+  preset: driver
+scenario:
+  ego_spawn_index: 8

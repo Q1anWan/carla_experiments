@@ -1,0 +1,22 @@
+id: unprotected_left_turn
+map: Town03
+weather: ClearNoon
+seed: 21
+duration: 18.0
+fps: 20
+fixed_delta_seconds: 0.05
+sync_mode: true
+no_rendering_mode: false
+ego_vehicle: vehicle.tesla.model3
+camera:
+  width: 1280
+  height: 720
+  fov: 90
+  fps: 20
+  preset: driver
+scenario:
+  ego_spawn_index: 3
+  approach_frames: 40
+  turn_frames: 30
+  ego_throttle: 0.55
+  turn_steer: -0.35

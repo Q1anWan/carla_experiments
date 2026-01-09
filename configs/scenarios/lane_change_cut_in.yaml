@@ -1,0 +1,22 @@
+id: lane_change_cut_in
+map: Town05
+weather: ClearNoon
+seed: 7
+duration: 20.0
+fps: 20
+fixed_delta_seconds: 0.05
+sync_mode: true
+no_rendering_mode: false
+ego_vehicle: vehicle.tesla.model3
+camera:
+  width: 1280
+  height: 720
+  fov: 90
+  fps: 20
+  preset: driver
+scenario:
+  ego_spawn_index: 5
+  cut_in_trigger_frame: 35
+  cut_in_duration_frames: 25
+  cut_in_throttle: 0.6
+  cut_in_steer: -0.22
