@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 import logging
 import math
 import random
-from typing import Callable, Dict, Iterable, Optional
+from typing import Any, Callable, Dict, Iterable, Optional
 
 import carla
 
@@ -192,6 +192,55 @@ class BaseScenario:
 
         ctx.tick_callbacks.append(apply_brake)
 
+    def _configure_vehicle_tm(
+        self,
+        tm: carla.TrafficManager,
+        vehicle: carla.Vehicle,
+        *,
+        speed_delta: Optional[float] = None,
+        follow_distance: Optional[float] = None,
+        ignore_lights: Optional[float] = None,
+        ignore_vehicles: Optional[float] = None,
+        auto_lane_change: Optional[bool] = None,
+    ) -> None:
+        if speed_delta is not None:
+            try:
+                tm.vehicle_percentage_speed_difference(vehicle, float(speed_delta))
+            except RuntimeError:
+                logging.warning("TM speed delta failed for %s", vehicle.id)
+        if follow_distance is not None:
+            try:
+                tm.distance_to_leading_vehicle(vehicle, float(follow_distance))
+            except (AttributeError, RuntimeError):
+                logging.warning("TM follow distance unsupported for %s", vehicle.id)
+        if ignore_lights is not None:
+            try:
+                tm.ignore_lights_percentage(vehicle, float(ignore_lights))
+            except (AttributeError, RuntimeError):
+                logging.warning("TM ignore lights unsupported for %s", vehicle.id)
+        if ignore_vehicles is not None:
+            try:
+                tm.ignore_vehicles_percentage(vehicle, float(ignore_vehicles))
+            except (AttributeError, RuntimeError):
+                logging.warning("TM ignore vehicles unsupported for %s", vehicle.id)
+        if auto_lane_change is not None:
+            try:
+                tm.auto_lane_change(vehicle, bool(auto_lane_change))
+            except (AttributeError, RuntimeError):
+                logging.warning("TM auto lane change unsupported for %s", vehicle.id)
+
+    def _apply_ego_tm(self, tm: carla.TrafficManager, ego: carla.Vehicle) -> None:
+        params = self.config.params
+        self._configure_vehicle_tm(
+            tm,
+            ego,
+            speed_delta=_get_param_float(params, "ego_speed_delta"),
+            follow_distance=_get_param_float(params, "ego_follow_distance_m"),
+            ignore_lights=_get_param_float(params, "ego_ignore_lights_percentage"),
+            ignore_vehicles=_get_param_float(params, "ego_ignore_vehicles_percentage"),
+            auto_lane_change=_get_param_bool(params, "ego_auto_lane_change"),
+        )
+
 
 def pick_spawn_point(spawn_points: Iterable[carla.Transform], rng: random.Random) -> carla.Transform:
     points = list(spawn_points)
@@ -317,3 +366,15 @@ def find_spawn_point(
             continue
         return sp
     return rng.choice(spawn_points)
+
+
+def _get_param_float(params: Dict[str, Any], key: str) -> Optional[float]:
+    if key not in params or params[key] is None:
+        return None
+    return float(params[key])
+
+
+def _get_param_bool(params: Dict[str, Any], key: str) -> Optional[bool]:
+    if key not in params:
+        return None
+    return bool(params[key])

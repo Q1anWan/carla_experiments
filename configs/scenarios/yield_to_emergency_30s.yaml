@@ -1,5 +1,6 @@
 id: yield_to_emergency
 map: Town04
+doc: docs/scenarios/yield_to_emergency.md
 weather: ClearNoon
 seed: 15
 duration: 30.0
@@ -19,11 +20,16 @@ events:
   voice_lead_time_s: 3.0
   robot_precue_lead_s: 0.5
 scenario:
-  ego_spawn_index: 12
-  emergency_boost_frames: 60
-  emergency_throttle: 0.8
-  background_vehicle_count: 20
-  background_walker_count: 10
+  emergency_spawn_distance_m: 45.0
+  emergency_speed_delta: -30.0
+  emergency_boost_start_frame: 320
+  emergency_boost_frames: 80
+  emergency_throttle: 0.9
+  ego_speed_delta: 20.0
+  ego_follow_distance_m: 6.0
+  background_vehicle_count: 22
+  background_walker_count: 8
+  background_min_distance_m: 25.0
   ego_brake_frame: 400
   ego_brake_duration_frames: 20
   ego_brake_value: 1.0

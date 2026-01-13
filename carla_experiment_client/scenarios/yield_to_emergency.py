@@ -9,6 +9,7 @@ import carla
 from .base import (
     BaseScenario,
     ScenarioContext,
+    _get_param_float,
     find_spawn_point,
     get_spawn_point_by_index,
     log_spawn,
@@ -32,7 +33,8 @@ class YieldToEmergencyScenario(BaseScenario):
             rng,
             min_lanes=2,
             avoid_junction=True,
-            forward_clear_m=60.0,
+            forward_clear_m=120.0,
+            avoid_traffic_lights=True,
         )
         ego = self._spawn_vehicle(
             world,
@@ -44,8 +46,10 @@ class YieldToEmergencyScenario(BaseScenario):
             autopilot=True,
         )
         log_spawn(ego, "ego")
+        self._apply_ego_tm(tm, ego)
 
-        emergency_spawn = offset_transform(ego_spawn, forward=-25.0)
+        emergency_distance = float(self.config.params.get("emergency_spawn_distance_m", 35.0))
+        emergency_spawn = offset_transform(ego_spawn, forward=-emergency_distance)
         try:
             emergency = self._spawn_vehicle(
                 world,
@@ -74,9 +78,16 @@ class YieldToEmergencyScenario(BaseScenario):
             )
         except RuntimeError:
             pass
+        self._configure_vehicle_tm(
+            tm,
+            emergency,
+            speed_delta=_get_param_float(self.config.params, "emergency_speed_delta"),
+            follow_distance=_get_param_float(self.config.params, "emergency_follow_distance_m"),
+        )
 
         background_vehicle_count = int(self.config.params.get("background_vehicle_count", 20))
         background_walker_count = int(self.config.params.get("background_walker_count", 10))
+        background_min_distance = float(self.config.params.get("background_min_distance_m", 20.0))
         background = self._spawn_background_traffic(
             world,
             tm,
@@ -87,6 +98,7 @@ class YieldToEmergencyScenario(BaseScenario):
                 ego_spawn.location,
                 emergency_spawn.location,
             ],
+            min_distance=background_min_distance,
         )
 
         ctx = ScenarioContext(
@@ -102,12 +114,17 @@ class YieldToEmergencyScenario(BaseScenario):
         )
         ctx.tag_actor("emergency", emergency)
 
+        boost_start = int(self.config.params.get("emergency_boost_start_frame", 0))
         boost_frames = int(self.config.params.get("emergency_boost_frames", self.config.fps * 2))
-        throttle = float(self.config.params.get("emergency_throttle", 0.8))
+        throttle = float(self.config.params.get("emergency_throttle", 0.85))
 
         def boost_emergency(frame: int) -> None:
-            if frame < boost_frames:
+            if frame == boost_start:
+                emergency.set_autopilot(False)
+            if boost_start <= frame < boost_start + boost_frames:
                 emergency.apply_control(carla.VehicleControl(throttle=throttle))
+            if frame == boost_start + boost_frames:
+                emergency.set_autopilot(True, tm.get_port())
 
         ctx.tick_callbacks.append(boost_emergency)
         self._maybe_add_ego_brake(ctx, tm)

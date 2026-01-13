@@ -33,7 +33,8 @@ class HighwayMergeScenario(BaseScenario):
             rng,
             min_lanes=2,
             avoid_junction=True,
-            forward_clear_m=60.0,
+            forward_clear_m=120.0,
+            avoid_traffic_lights=True,
         )
         ego = self._spawn_vehicle(
             world,
@@ -45,6 +46,31 @@ class HighwayMergeScenario(BaseScenario):
             autopilot=True,
         )
         log_spawn(ego, "ego")
+        self._apply_ego_tm(tm, ego)
+
+        nearby_vehicles: list[carla.Actor] = []
+        nearby_offsets = self.config.params.get("nearby_vehicle_offsets") or [
+            {"forward": 12.0, "right": 3.5},
+            {"forward": -8.0, "right": -3.5},
+        ]
+        if isinstance(nearby_offsets, list):
+            for index, offset in enumerate(nearby_offsets):
+                if not isinstance(offset, dict):
+                    continue
+                forward = float(offset.get("forward", 0.0))
+                right = float(offset.get("right", 0.0))
+                transform = offset_transform(ego_spawn, forward=forward, right=right)
+                vehicle = self._spawn_vehicle(
+                    world,
+                    tm,
+                    rng,
+                    blueprint_filter="vehicle.*",
+                    transform=transform,
+                    role_name=f"nearby_vehicle_{index}",
+                    autopilot=True,
+                )
+                log_spawn(vehicle, f"nearby_vehicle_{index}")
+                nearby_vehicles.append(vehicle)
 
         waypoint = world.get_map().get_waypoint(ego_spawn.location)
         merge_wp = waypoint.get_right_lane() or waypoint.get_left_lane()
@@ -80,6 +106,7 @@ class HighwayMergeScenario(BaseScenario):
 
         background_vehicle_count = int(self.config.params.get("background_vehicle_count", 18))
         background_walker_count = int(self.config.params.get("background_walker_count", 10))
+        background_min_distance = float(self.config.params.get("background_min_distance_m", 20.0))
         background = self._spawn_background_traffic(
             world,
             tm,
@@ -90,13 +117,15 @@ class HighwayMergeScenario(BaseScenario):
                 ego_spawn.location,
                 merge_spawn.location,
                 lead_spawn.location,
+                *[vehicle.get_location() for vehicle in nearby_vehicles],
             ],
+            min_distance=background_min_distance,
         )
 
         ctx = ScenarioContext(
             world=world,
             ego_vehicle=ego,
-            actors=[ego, merge_vehicle, lead_vehicle] + background,
+            actors=[ego, merge_vehicle, lead_vehicle] + nearby_vehicles + background,
             camera_config=self.config.camera,
             fps=self.config.fps,
             duration=self.config.duration,
@@ -109,6 +138,9 @@ class HighwayMergeScenario(BaseScenario):
         duration_frames = int(self.config.params.get("merge_duration_frames", self.config.fps))
         throttle = float(self.config.params.get("merge_throttle", 0.55))
         base_steer = float(self.config.params.get("merge_steer", 0.2))
+        relocate_on_trigger = bool(self.config.params.get("merge_relocate_on_trigger", False))
+        relocate_forward = float(self.config.params.get("merge_relocate_forward_m", 8.0))
+        relocate_right = float(self.config.params.get("merge_relocate_right_m", 3.5))
 
         relative = merge_vehicle.get_transform().location - ego_spawn.location
         ego_right = right_vector(ego_spawn)
@@ -117,6 +149,12 @@ class HighwayMergeScenario(BaseScenario):
 
         def merge_trigger(frame: int) -> None:
             if frame == start_frame:
+                if relocate_on_trigger:
+                    ego_transform = ego.get_transform()
+                    relocate_transform = offset_transform(
+                        ego_transform, forward=relocate_forward, right=relocate_right
+                    )
+                    merge_vehicle.set_transform(relocate_transform)
                 merge_vehicle.set_autopilot(False)
             if start_frame <= frame < start_frame + duration_frames:
                 merge_vehicle.apply_control(

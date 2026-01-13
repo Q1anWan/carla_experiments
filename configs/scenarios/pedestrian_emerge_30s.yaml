@@ -1,5 +1,6 @@
 id: pedestrian_emerge
 map: Town05
+doc: docs/scenarios/pedestrian_emerge.md
 weather: ClearNoon
 seed: 11
 duration: 30.0
@@ -19,9 +20,20 @@ events:
   voice_lead_time_s: 3.0
   robot_precue_lead_s: 0.5
 scenario:
-  ego_spawn_index: 6
-  trigger_distance: 12.0
-  cross_offset: 8.0
+  trigger_frame: 360
+  trigger_distance: 20.0
+  walker_start_ahead_m: 18.0
+  walker_side_offset_m: 3.5
+  cross_offset: 6.0
+  relocate_on_trigger: true
+  occluder_forward_m: 16.0
+  occluder_side_offset_m: 3.0
+  occluder_blueprint: vehicle.volkswagen.t2
+  ego_speed_delta: 18.0
+  ego_follow_distance_m: 6.0
+  background_vehicle_count: 20
+  background_walker_count: 12
+  background_min_distance_m: 25.0
   ego_brake_frame: 400
   ego_brake_duration_frames: 20
   ego_brake_value: 1.0

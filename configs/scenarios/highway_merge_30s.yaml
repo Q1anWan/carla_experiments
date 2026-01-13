@@ -1,5 +1,6 @@
 id: highway_merge
 map: Town04
+doc: docs/scenarios/highway_merge.md
 weather: ClearNoon
 seed: 42
 duration: 30.0
@@ -19,15 +20,25 @@ events:
   voice_lead_time_s: 3.0
   robot_precue_lead_s: 0.5
 scenario:
-  ego_spawn_index: 10
-  merge_trigger_frame: 40
-  merge_duration_frames: 30
+  merge_trigger_frame: 360
+  merge_duration_frames: 50
   merge_throttle: 0.6
   merge_steer: 0.2
-  lead_slow_distance_m: 35.0
-  lead_slow_speed_delta: 30.0
-  background_vehicle_count: 20
-  background_walker_count: 12
+  merge_relocate_on_trigger: true
+  merge_relocate_forward_m: 8.0
+  merge_relocate_right_m: 3.5
+  lead_slow_distance_m: 30.0
+  lead_slow_speed_delta: 40.0
+  ego_speed_delta: 20.0
+  ego_follow_distance_m: 6.0
+  background_vehicle_count: 28
+  background_walker_count: 6
+  background_min_distance_m: 25.0
+  nearby_vehicle_offsets:
+    - forward: 12.0
+      right: 3.5
+    - forward: -8.0
+      right: -3.5
   ego_brake_frame: 400
   ego_brake_duration_frames: 20
   ego_brake_value: 1.0
