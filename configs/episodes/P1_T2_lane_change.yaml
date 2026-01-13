@@ -1,0 +1,29 @@
+episode_id: "P1_T2_lane_change"
+suite_id: "P1"
+type_id: "T2"
+town: { preferred: ["Town05"], fallback: ["Town10","Town03"] }
+seed: 1002
+ego: { target_speed_kmh: 50, control_mode: "tm" }
+topology_query:
+  start_selector: { type: "multi_lane_straight", min_lanes: 3, offset_back_m: 180 }
+  decision_point_selector: { type: "straight_segment_point", offset_forward_m: 60 }
+  route_selector: { type: "forward", forward_m: 420 }
+npc_plan:
+  traffic_manager: { vehicle_count: 25, walker_count: 10 }
+  scripted_actors:
+    - id: "lead_slow"
+      kind: "vehicle"
+      blueprint: "vehicle.audi.a2"
+      spawn_rule: { type: "ahead_same_lane", distance_m: 30 }
+      behavior: { type: "constant_speed", speed_kmh: 25 }
+    - id: "adjacent_blocker"
+      kind: "vehicle"
+      blueprint: "vehicle.tesla.model3"
+      spawn_rule: { type: "adjacent_lane_parallel", distance_m: 0 }
+      behavior: { type: "constant_speed", speed_kmh: 45 }
+event_markers:
+  - name: "lane_change_decision"
+    trigger: { type: "headway_below", meters: 25 }
+    expected_action: "lane_change"
+    tags: ["lane_change","overtake","gap_acceptance"]
+termination: { mode: "time_or_distance", max_time_s: 60, min_progress_m: 200 }

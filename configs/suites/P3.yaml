@@ -1,0 +1,8 @@
+suite_id: "P3"
+episodes:
+  - "P3_T1_merge"
+  - "P3_T2_lane_change"
+  - "P3_T3_signal_intersection"
+  - "P3_T4_unprotected_left"
+  - "P3_T5_emergency_yield"
+  - "P3_T6_vru_roadwork"

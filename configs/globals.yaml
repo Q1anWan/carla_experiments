@@ -1,0 +1,48 @@
+version: "0.1"
+carla:
+  host: "192.168.31.32"
+  port: 2000
+  timeout_s: 10
+  fixed_delta_seconds: 0.05
+  synchronous: true
+  traffic_manager_port: 8000
+  allow_version_mismatch: true
+
+recording:
+  duration_s: 60
+  video_fps: 30
+  image_size: [1280, 720]
+  fov: 90
+  output_format: "mp4"   # mp4 or frames
+
+weather:
+  preset: "ClearNoon"    # 全库默认；可 per-suite override
+
+ego:
+  blueprint: "vehicle.tesla.model3"
+  control_mode: "tm"     # tm or autoware
+  target_speed_kmh: 45   # 城市默认
+  safety:
+    max_brake: 0.8
+
+traffic:
+  vehicles:
+    enabled: true
+    count: 25
+    autopilot: true
+    speed_delta_pct_mean: -5
+    speed_delta_pct_std: 3
+  walkers:
+    enabled: true
+    count: 40
+
+events:
+  voice_lead_time_s: 3.0      # 语音提前量（V1/V2）
+  robot_precue_lead_s: 0.5    # 机器人提前量（R1）
+  min_events_per_episode: 1
+
+validation:
+  fail_if_no_event: true
+  fail_if_collision: true
+  fail_if_route_not_progress: true
+  min_distance_progress_m: 120

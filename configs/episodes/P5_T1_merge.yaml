@@ -1,0 +1,18 @@
+episode_id: "P5_T1_merge"
+suite_id: "P5"
+type_id: "T1"
+town: { preferred: ["Town03"], fallback: ["Town04","Town05"] }
+seed: 5001
+ego: { target_speed_kmh: 55, control_mode: "tm" }
+topology_query:
+  start_selector: { type: "merge_start_offset", offset_back_m: 240 }
+  decision_point_selector: { type: "merge_point", trigger_distance_m: 75 }
+  route_selector: { type: "through_merge_then_forward", forward_m: 450 }
+npc_plan:
+  traffic_manager: { vehicle_count: 18, walker_count: 10 }
+event_markers:
+  - name: "merge_decision"
+    trigger: { type: "distance_to_merge_point", meters: 75 }
+    expected_action: "merge"
+    tags: ["merge","low_stress"]
+termination: { mode: "time_or_distance", max_time_s: 60, min_progress_m: 160 }

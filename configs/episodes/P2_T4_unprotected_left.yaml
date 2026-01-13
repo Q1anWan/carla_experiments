@@ -1,0 +1,23 @@
+episode_id: "P2_T4_unprotected_left"
+suite_id: "P2"
+type_id: "T4"
+town: { preferred: ["Town03"], fallback: ["Town01","Town10"] }
+seed: 2004
+ego: { target_speed_kmh: 35, control_mode: "tm" }
+topology_query:
+  start_selector: { type: "left_turn_candidate", offset_back_m: 140 }
+  decision_point_selector: { type: "stop_line_distance", trigger_distance_m: 55 }
+  route_selector: { type: "execute_left_turn_then_forward", forward_m: 240 }
+npc_plan:
+  traffic_manager: { vehicle_count: 22, walker_count: 20 }
+  scripted_actors:
+    - id: "oncoming_stream"
+      kind: "vehicle_stream"
+      spawn_rule: { type: "oncoming_lane_stream", count: 4, gap_s: [2.8, 4.2] }
+      behavior: { type: "constant_speed", speed_kmh: 45 }
+event_markers:
+  - name: "left_turn_decision"
+    trigger: { type: "distance_to_stop_line", meters: 55 }
+    expected_action: "wait_then_left_turn"
+    tags: ["left_turn","harder_gap"]
+termination: { mode: "time_or_distance", max_time_s: 60, min_progress_m: 140 }

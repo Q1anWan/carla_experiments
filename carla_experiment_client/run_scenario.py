@@ -44,6 +44,9 @@ def _write_metadata(
         "fixed_delta_seconds": config.fixed_delta_seconds,
         "sync_mode": config.sync_mode,
         "no_rendering_mode": config.no_rendering_mode,
+        "voice_lead_time_s": config.voice_lead_time_s,
+        "robot_precue_lead_s": config.robot_precue_lead_s,
+        "min_event_time_s": config.min_event_time_s,
         "host": host,
         "port": port,
         "traffic_manager_port": tm_port,
@@ -90,6 +93,9 @@ def run_scenario(
             ego_vehicle=scenario_ctx.ego_vehicle,
             map_obj=ctx.world.get_map(),
             fps=config.fps,
+            voice_lead_time_s=config.voice_lead_time_s,
+            robot_precue_lead_s=config.robot_precue_lead_s,
+            min_event_time_s=config.min_event_time_s,
         )
 
         def on_tick(snapshot: carla.WorldSnapshot, _: carla.Image, index: int) -> None:

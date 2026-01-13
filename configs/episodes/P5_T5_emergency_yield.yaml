@@ -1,0 +1,24 @@
+episode_id: "P5_T5_emergency_yield"
+suite_id: "P5"
+type_id: "T5"
+town: { preferred: ["Town05"], fallback: ["Town10","Town04"] }
+seed: 5005
+ego: { target_speed_kmh: 40, control_mode: "tm" }
+topology_query:
+  start_selector: { type: "straight_segment", min_length_m: 240, offset_back_m: 120 }
+  decision_point_selector: { type: "emergency_ttc", ttc_s: 4.8 }
+  route_selector: { type: "forward", forward_m: 280 }
+npc_plan:
+  traffic_manager: { vehicle_count: 16, walker_count: 10 }
+  scripted_actors:
+    - id: "ambulance"
+      kind: "vehicle"
+      blueprint: "vehicle.ford.ambulance"
+      spawn_rule: { type: "behind_same_lane", distance_m: 90 }
+      behavior: { type: "pursue_lane", speed_kmh: 60 }
+event_markers:
+  - name: "emergency_approach"
+    trigger: { type: "ttc_to_emergency_below", seconds: 4.8 }
+    expected_action: "yield"
+    tags: ["emergency","low_stress"]
+termination: { mode: "time_or_distance", max_time_s: 60, min_progress_m: 110 }

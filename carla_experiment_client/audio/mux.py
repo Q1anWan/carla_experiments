@@ -36,7 +36,8 @@ def render_narration(
         clip_path = temp_dir / f"clip_{idx:03d}.wav"
         synthesize(text, clip_path, voice=voice)
         clip_paths.append(clip_path)
-        delays_ms.append(int(float(event.get("t", 0.0)) * 1000))
+        delay_s = float(event.get("t_voice_start", event.get("t", 0.0)))
+        delays_ms.append(int(delay_s * 1000))
 
     if not clip_paths:
         return None

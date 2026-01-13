@@ -10,6 +10,11 @@ __pycache__/
 # OS/editor
 .DS_Store
 Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
 
 # Generated runs & debug outputs
 runs/
@@ -22,6 +27,12 @@ variants/
 
 # Logs
 *.log
+
+# Environments
+.venv/
+.env
+.env.*
+.python-version
 
 # Core dumps
 core

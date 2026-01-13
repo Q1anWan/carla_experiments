@@ -1,0 +1,27 @@
+episode_id: "P3_T6_vru_roadwork"
+suite_id: "P3"
+type_id: "T6"
+town: { preferred: ["Town05"], fallback: ["Town10","Town03"] }
+seed: 3006
+ego: { target_speed_kmh: 55, control_mode: "tm" }
+topology_query:
+  start_selector: { type: "straight_segment", min_length_m: 260, offset_back_m: 160 }
+  decision_point_selector: { type: "distance_to_roadwork", trigger_distance_m: 60 }
+  route_selector: { type: "forward", forward_m: 420 }
+npc_plan:
+  traffic_manager: { vehicle_count: 20, walker_count: 0 }
+  scripted_actors:
+    - id: "roadworker"
+      kind: "walker"
+      blueprint: "walker.pedestrian.0010"
+      spawn_rule: { type: "roadside_worker_zone", lateral_m: 2.0 }
+      behavior: { type: "idle_or_slow_walk", speed_mps: 0.4 }
+    - id: "cones"
+      kind: "prop_group"
+      spawn_rule: { type: "place_cones_along_lane", count: 8, spacing_m: 3.5 }
+event_markers:
+  - name: "roadwork_caution"
+    trigger: { type: "distance_to_roadwork", meters: 60 }
+    expected_action: "slow_down_or_shift"
+    tags: ["vru","roadwork","safety_margin"]
+termination: { mode: "time_or_distance", max_time_s: 60, min_progress_m: 180 }

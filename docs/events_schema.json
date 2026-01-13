@@ -12,6 +12,18 @@
             "type": "number",
             "description": "Seconds from start"
           },
+          "t_event": {
+            "type": "number",
+            "description": "Event time (seconds from start)"
+          },
+          "t_voice_start": {
+            "type": "number",
+            "description": "Voice start time (t_event - voice_lead_time_s)"
+          },
+          "t_robot_precue": {
+            "type": "number",
+            "description": "Robot precue time (t_voice_start - robot_precue_lead_s)"
+          },
           "type": {
             "type": "string",
             "description": "Decision event type"
@@ -22,12 +34,26 @@
           "reason_text": {
             "type": "string"
           },
+          "audio_id": {
+            "type": "string",
+            "description": "Audio clip identifier"
+          },
           "robot_precue_t": {
             "type": "number",
             "description": "Robot precue time (t - 0.5s)"
           }
         },
-        "required": ["t", "type", "decision_text", "reason_text", "robot_precue_t"]
+        "required": [
+          "t",
+          "t_event",
+          "t_voice_start",
+          "t_robot_precue",
+          "type",
+          "decision_text",
+          "reason_text",
+          "audio_id",
+          "robot_precue_t"
+        ]
       }
     },
     "variant": {

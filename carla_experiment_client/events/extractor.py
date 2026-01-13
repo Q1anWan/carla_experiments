@@ -16,6 +16,9 @@ class EventExtractor:
     ego_vehicle: carla.Vehicle
     map_obj: carla.Map
     fps: int
+    voice_lead_time_s: float = 3.0
+    robot_precue_lead_s: float = 0.5
+    min_event_time_s: float = 0.0
 
     _prev_speed: float = 0.0
     _prev_lane_id: Optional[int] = None
@@ -23,7 +26,10 @@ class EventExtractor:
     _events: List[dict] = field(default_factory=list)
 
     def tick(self, snapshot: carla.WorldSnapshot, frame_index: int) -> None:
-        t = float(snapshot.timestamp.elapsed_seconds)
+        if self.fps > 0:
+            t = float(frame_index) / float(self.fps)
+        else:
+            t = float(snapshot.timestamp.elapsed_seconds)
         dt = float(snapshot.timestamp.delta_seconds or 1.0 / max(self.fps, 1))
 
         velocity = self.ego_vehicle.get_velocity()
@@ -65,15 +71,29 @@ class EventExtractor:
         return list(self._events)
 
     def _emit(self, t: float, event_type: str) -> None:
+        if t < self.min_event_time_s:
+            return
         if not self._should_emit(t, event_type):
             return
         decision, reason = self._format_event(event_type)
+        event_index = len(self._events)
+        t_event = round(t, 3)
+        t_voice_start = round(
+            clamp(t_event - self.voice_lead_time_s, 0.0, t_event), 3
+        )
+        t_robot_precue = round(
+            clamp(t_voice_start - self.robot_precue_lead_s, 0.0, t_voice_start), 3
+        )
         payload = {
-            "t": round(t, 3),
+            "t": t_event,
+            "t_event": t_event,
+            "t_voice_start": t_voice_start,
+            "t_robot_precue": t_robot_precue,
             "type": event_type,
             "decision_text": decision,
             "reason_text": reason,
-            "robot_precue_t": round(clamp(t - 0.5, 0.0, t), 3),
+            "robot_precue_t": t_robot_precue,
+            "audio_id": f"{event_type}_{event_index:02d}",
         }
         self._events.append(payload)
         self._last_event_time[event_type] = t

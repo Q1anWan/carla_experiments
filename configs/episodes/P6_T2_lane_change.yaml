@@ -1,0 +1,24 @@
+episode_id: "P6_T2_lane_change"
+suite_id: "P6"
+type_id: "T2"
+town: { preferred: ["Town03"], fallback: ["Town05","Town10"] }
+seed: 6002
+ego: { target_speed_kmh: 46, control_mode: "tm" }
+topology_query:
+  start_selector: { type: "multi_lane_straight", min_lanes: 2, offset_back_m: 200 }
+  decision_point_selector: { type: "straight_segment_point", offset_forward_m: 60 }
+  route_selector: { type: "forward", forward_m: 360 }
+npc_plan:
+  traffic_manager: { vehicle_count: 22, walker_count: 15 }
+  scripted_actors:
+    - id: "lead_slow"
+      kind: "vehicle"
+      blueprint: "vehicle.audi.a2"
+      spawn_rule: { type: "ahead_same_lane", distance_m: 28 }
+      behavior: { type: "constant_speed", speed_kmh: 24 }
+event_markers:
+  - name: "lane_change_decision"
+    trigger: { type: "headway_below", meters: 24 }
+    expected_action: "lane_change"
+    tags: ["lane_change","backup"]
+termination: { mode: "time_or_distance", max_time_s: 60, min_progress_m: 140 }

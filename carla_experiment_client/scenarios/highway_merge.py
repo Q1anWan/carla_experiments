@@ -9,6 +9,7 @@ import carla
 from .base import (
     BaseScenario,
     ScenarioContext,
+    find_spawn_point,
     get_spawn_point_by_index,
     log_spawn,
     offset_transform,
@@ -27,7 +28,13 @@ class HighwayMergeScenario(BaseScenario):
         spawn_points = world.get_map().get_spawn_points()
         ego_spawn = get_spawn_point_by_index(
             spawn_points, self.config.params.get("ego_spawn_index")
-        ) or pick_spawn_point(spawn_points, rng)
+        ) or find_spawn_point(
+            world,
+            rng,
+            min_lanes=2,
+            avoid_junction=True,
+            forward_clear_m=60.0,
+        )
         ego = self._spawn_vehicle(
             world,
             tm,
@@ -56,10 +63,40 @@ class HighwayMergeScenario(BaseScenario):
         )
         log_spawn(merge_vehicle, "merge_vehicle")
 
+        lead_distance = float(self.config.params.get("lead_slow_distance_m", 35.0))
+        lead_speed_delta = float(self.config.params.get("lead_slow_speed_delta", 30.0))
+        lead_spawn = offset_transform(ego_spawn, forward=lead_distance)
+        lead_vehicle = self._spawn_vehicle(
+            world,
+            tm,
+            rng,
+            blueprint_filter="vehicle.*",
+            transform=lead_spawn,
+            role_name="lead_slow",
+            autopilot=True,
+        )
+        tm.vehicle_percentage_speed_difference(lead_vehicle, lead_speed_delta)
+        log_spawn(lead_vehicle, "lead_slow")
+
+        background_vehicle_count = int(self.config.params.get("background_vehicle_count", 18))
+        background_walker_count = int(self.config.params.get("background_walker_count", 10))
+        background = self._spawn_background_traffic(
+            world,
+            tm,
+            rng,
+            vehicle_count=background_vehicle_count,
+            walker_count=background_walker_count,
+            exclude_locations=[
+                ego_spawn.location,
+                merge_spawn.location,
+                lead_spawn.location,
+            ],
+        )
+
         ctx = ScenarioContext(
             world=world,
             ego_vehicle=ego,
-            actors=[ego, merge_vehicle],
+            actors=[ego, merge_vehicle, lead_vehicle] + background,
             camera_config=self.config.camera,
             fps=self.config.fps,
             duration=self.config.duration,
@@ -89,4 +126,5 @@ class HighwayMergeScenario(BaseScenario):
                 merge_vehicle.set_autopilot(True, tm.get_port())
 
         ctx.tick_callbacks.append(merge_trigger)
+        self._maybe_add_ego_brake(ctx, tm)
         return ctx

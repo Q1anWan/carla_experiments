@@ -1,0 +1,24 @@
+episode_id: "P4_T6_vru_crossing"
+suite_id: "P4"
+type_id: "T6"
+town: { preferred: ["Town05"], fallback: ["Town10","Town03"] }
+seed: 4006
+ego: { target_speed_kmh: 30, control_mode: "tm" }
+topology_query:
+  start_selector: { type: "crossing_zone_approach", offset_back_m: 150 }
+  decision_point_selector: { type: "distance_to_crossing_zone", trigger_distance_m: 38 }
+  route_selector: { type: "forward", forward_m: 200 }
+npc_plan:
+  traffic_manager: { vehicle_count: 22, walker_count: 45 }
+  scripted_actors:
+    - id: "crossing_ped"
+      kind: "walker"
+      blueprint: "walker.pedestrian.0016"
+      spawn_rule: { type: "sidewalk_near_crossing", offset_m: 1.0 }
+      behavior: { type: "cross_road_at_time", start_after_s: 6.5, speed_mps: 1.4 }
+event_markers:
+  - name: "vru_conflict"
+    trigger: { type: "distance_to_walker_below", meters: 10 }
+    expected_action: "brake_or_yield"
+    tags: ["vru","dense"]
+termination: { mode: "time_or_distance", max_time_s: 60, min_progress_m: 100 }

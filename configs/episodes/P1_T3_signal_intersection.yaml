@@ -1,0 +1,24 @@
+episode_id: "P1_T3_signal_intersection"
+suite_id: "P1"
+type_id: "T3"
+town: { preferred: ["Town10"], fallback: ["Town05","Town03"] }
+seed: 1003
+ego: { target_speed_kmh: 40, control_mode: "tm" }
+topology_query:
+  start_selector: { type: "signalized_junction_approach", offset_back_m: 160 }
+  decision_point_selector: { type: "stop_line_distance", trigger_distance_m: 70 }
+  route_selector: { type: "pass_junction_then_forward", forward_m: 250 }
+npc_plan:
+  traffic_manager: { vehicle_count: 22, walker_count: 25 }
+  scripted_actors:
+    - id: "lead_vehicle"
+      kind: "vehicle"
+      blueprint: "vehicle.lincoln.mkz_2020"
+      spawn_rule: { type: "ahead_same_lane", distance_m: 18 }
+      behavior: { type: "tm_autopilot" }
+event_markers:
+  - name: "approach_signal"
+    trigger: { type: "distance_to_stop_line", meters: 70 }
+    expected_action: "prepare_stop_or_go"
+    tags: ["signal","stop_go"]
+termination: { mode: "time_or_distance", max_time_s: 60, min_progress_m: 120 }

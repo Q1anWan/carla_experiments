@@ -1,0 +1,24 @@
+episode_id: "P4_T2_lane_change"
+suite_id: "P4"
+type_id: "T2"
+town: { preferred: ["Town10"], fallback: ["Town05","Town03"] }
+seed: 4002
+ego: { target_speed_kmh: 48, control_mode: "tm" }
+topology_query:
+  start_selector: { type: "multi_lane_straight", min_lanes: 3, offset_back_m: 190 }
+  decision_point_selector: { type: "straight_segment_point", offset_forward_m: 65 }
+  route_selector: { type: "forward", forward_m: 440 }
+npc_plan:
+  traffic_manager: { vehicle_count: 30, walker_count: 30 }
+  scripted_actors:
+    - id: "lead_slow"
+      kind: "vehicle"
+      blueprint: "vehicle.audi.a2"
+      spawn_rule: { type: "ahead_same_lane", distance_m: 24 }
+      behavior: { type: "constant_speed", speed_kmh: 20 }
+event_markers:
+  - name: "lane_change_decision"
+    trigger: { type: "headway_below", meters: 20 }
+    expected_action: "lane_change"
+    tags: ["lane_change","pre_intersection"]
+termination: { mode: "time_or_distance", max_time_s: 60, min_progress_m: 200 }

@@ -1,0 +1,29 @@
+episode_id: "P2_T2_lane_change"
+suite_id: "P2"
+type_id: "T2"
+town: { preferred: ["Town10"], fallback: ["Town05","Town03"] }
+seed: 2002
+ego: { target_speed_kmh: 55, control_mode: "tm" }
+topology_query:
+  start_selector: { type: "multi_lane_straight", min_lanes: 3, offset_back_m: 200 }
+  decision_point_selector: { type: "straight_segment_point", offset_forward_m: 70 }
+  route_selector: { type: "forward", forward_m: 480 }
+npc_plan:
+  traffic_manager: { vehicle_count: 30, walker_count: 20 }
+  scripted_actors:
+    - id: "lead_slow"
+      kind: "vehicle"
+      blueprint: "vehicle.audi.a2"
+      spawn_rule: { type: "ahead_same_lane", distance_m: 26 }
+      behavior: { type: "constant_speed", speed_kmh: 22 }
+    - id: "adjacent_blocker"
+      kind: "vehicle"
+      blueprint: "vehicle.nissan.patrol"
+      spawn_rule: { type: "adjacent_lane_rear", distance_m: 12 }
+      behavior: { type: "approach_then_hold_gap", speed_kmh: 60, hold_gap_m: 10 }
+event_markers:
+  - name: "lane_change_decision"
+    trigger: { type: "headway_below", meters: 22 }
+    expected_action: "lane_change"
+    tags: ["lane_change","dense","blindspot"]
+termination: { mode: "time_or_distance", max_time_s: 60, min_progress_m: 220 }

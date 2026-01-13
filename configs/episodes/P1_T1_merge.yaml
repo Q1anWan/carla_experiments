@@ -1,0 +1,24 @@
+episode_id: "P1_T1_merge"
+suite_id: "P1"
+type_id: "T1"
+town: { preferred: ["Town04"], fallback: ["Town05","Town03"] }
+seed: 1001
+ego: { target_speed_kmh: 65, control_mode: "tm" }
+topology_query:
+  start_selector: { type: "merge_start_offset", offset_back_m: 220 }
+  decision_point_selector: { type: "merge_point", trigger_distance_m: 80 }
+  route_selector: { type: "through_merge_then_forward", forward_m: 500 }
+npc_plan:
+  traffic_manager: { vehicle_count: 28, walker_count: 0 }
+  scripted_actors:
+    - id: "lead_slow"
+      kind: "vehicle"
+      blueprint: "vehicle.audi.a2"
+      spawn_rule: { type: "ahead_same_lane_after_merge", distance_m: 40 }
+      behavior: { type: "constant_speed", speed_kmh: 35 }
+event_markers:
+  - name: "merge_decision"
+    trigger: { type: "distance_to_merge_point", meters: 80 }
+    expected_action: "merge"
+    tags: ["merge","gap_acceptance"]
+termination: { mode: "time_or_distance", max_time_s: 60, min_progress_m: 180 }

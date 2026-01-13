@@ -1,0 +1,24 @@
+episode_id: "P3_T1_merge"
+suite_id: "P3"
+type_id: "T1"
+town: { preferred: ["Town04"], fallback: ["Town12","Town05"] }
+seed: 3001
+ego: { target_speed_kmh: 80, control_mode: "tm" }
+topology_query:
+  start_selector: { type: "merge_start_offset", offset_back_m: 260 }
+  decision_point_selector: { type: "merge_point", trigger_distance_m: 95 }
+  route_selector: { type: "through_merge_then_forward", forward_m: 650 }
+npc_plan:
+  traffic_manager: { vehicle_count: 30, walker_count: 0 }
+  scripted_actors:
+    - id: "lead_slow"
+      kind: "vehicle"
+      blueprint: "vehicle.carlamotors.carlacola"
+      spawn_rule: { type: "ahead_same_lane_after_merge", distance_m: 45 }
+      behavior: { type: "constant_speed", speed_kmh: 45 }
+event_markers:
+  - name: "merge_decision"
+    trigger: { type: "distance_to_merge_point", meters: 95 }
+    expected_action: "merge"
+    tags: ["merge","high_speed"]
+termination: { mode: "time_or_distance", max_time_s: 60, min_progress_m: 260 }

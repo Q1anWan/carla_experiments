@@ -92,6 +92,22 @@ runs/<timestamp>/variants/voice{0|1|2}_robot{0|1}/
   robot_timeline.csv   # only for robot=1
 ```
 
+To avoid duplicating video files, generate only audio assets and a robot timeline:
+
+```
+./render_variants.py --run_dir runs/20250101_120000 --audio-only
+```
+
+Outputs:
+
+```
+runs/<timestamp>/
+  audio_assets/
+    what.wav
+    whatwhy.wav
+  robot_timeline.csv
+```
+
 ## Debugging modules (step-by-step)
 
 ```

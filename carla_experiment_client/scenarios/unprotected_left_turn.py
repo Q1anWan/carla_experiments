@@ -9,6 +9,7 @@ import carla
 from .base import (
     BaseScenario,
     ScenarioContext,
+    find_spawn_point,
     get_spawn_point_by_index,
     log_spawn,
     offset_transform,
@@ -26,7 +27,15 @@ class UnprotectedLeftTurnScenario(BaseScenario):
         spawn_points = world.get_map().get_spawn_points()
         ego_spawn = get_spawn_point_by_index(
             spawn_points, self.config.params.get("ego_spawn_index")
-        ) or pick_spawn_point(spawn_points, rng)
+        ) or find_spawn_point(
+            world,
+            rng,
+            min_lanes=1,
+            avoid_junction=True,
+            require_junction_ahead=True,
+            junction_ahead_m=70.0,
+            avoid_traffic_lights=True,
+        )
         ego = self._spawn_vehicle(
             world,
             tm,
@@ -50,10 +59,24 @@ class UnprotectedLeftTurnScenario(BaseScenario):
         )
         log_spawn(oncoming, "oncoming_vehicle")
 
+        background_vehicle_count = int(self.config.params.get("background_vehicle_count", 16))
+        background_walker_count = int(self.config.params.get("background_walker_count", 6))
+        background = self._spawn_background_traffic(
+            world,
+            tm,
+            rng,
+            vehicle_count=background_vehicle_count,
+            walker_count=background_walker_count,
+            exclude_locations=[
+                ego_spawn.location,
+                oncoming_spawn.location,
+            ],
+        )
+
         ctx = ScenarioContext(
             world=world,
             ego_vehicle=ego,
-            actors=[ego, oncoming],
+            actors=[ego, oncoming] + background,
             camera_config=self.config.camera,
             fps=self.config.fps,
             duration=self.config.duration,
@@ -76,4 +99,5 @@ class UnprotectedLeftTurnScenario(BaseScenario):
                 ego.apply_control(carla.VehicleControl(throttle=throttle, steer=0.0))
 
         ctx.tick_callbacks.append(control_ego)
+        self._maybe_add_ego_brake(ctx, tm)
         return ctx

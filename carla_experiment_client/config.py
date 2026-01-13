@@ -50,6 +50,9 @@ class ScenarioConfig:
     no_rendering_mode: bool
     ego_vehicle: str
     camera: CameraConfig
+    voice_lead_time_s: float
+    robot_precue_lead_s: float
+    min_event_time_s: float
     params: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -115,6 +118,8 @@ def load_scenario_config(path: Path) -> ScenarioConfig:
         ),
     )
 
+    events_raw = raw.get("events", {}) or {}
+
     return ScenarioConfig(
         scenario_id=str(raw.get("id", "unknown")),
         map_name=raw.get("map"),
@@ -127,5 +132,8 @@ def load_scenario_config(path: Path) -> ScenarioConfig:
         no_rendering_mode=bool(raw.get("no_rendering_mode", False)),
         ego_vehicle=str(raw.get("ego_vehicle", "vehicle.tesla.model3")),
         camera=camera,
+        voice_lead_time_s=float(events_raw.get("voice_lead_time_s", 3.0)),
+        robot_precue_lead_s=float(events_raw.get("robot_precue_lead_s", 0.5)),
+        min_event_time_s=float(events_raw.get("min_event_time_s", 0.0)),
         params=raw.get("scenario", {}) or {},
     )

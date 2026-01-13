@@ -1,0 +1,34 @@
+id: lane_change_cut_in
+map: Town05
+weather: ClearNoon
+seed: 7
+duration: 30.0
+fps: 20
+fixed_delta_seconds: 0.05
+sync_mode: true
+no_rendering_mode: false
+ego_vehicle: vehicle.tesla.model3
+camera:
+  width: 1280
+  height: 720
+  fov: 90
+  fps: 20
+  preset: driver
+events:
+  min_event_time_s: 18.0
+  voice_lead_time_s: 3.0
+  robot_precue_lead_s: 0.5
+scenario:
+  ego_spawn_index: 5
+  cut_in_trigger_frame: 40
+  cut_in_duration_frames: 30
+  cut_in_throttle: 0.6
+  cut_in_steer: -0.22
+  lead_slow_distance_m: 25.0
+  lead_slow_speed_delta: 35.0
+  background_vehicle_count: 22
+  background_walker_count: 12
+  ego_brake_frame: 400
+  ego_brake_duration_frames: 20
+  ego_brake_value: 1.0
+  ego_brake_resume_autopilot: true

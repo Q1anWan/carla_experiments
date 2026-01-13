@@ -238,6 +238,9 @@ def debug_events(
             ego_vehicle=scenario_ctx.ego_vehicle,
             map_obj=ctx.world.get_map(),
             fps=config.fps,
+            voice_lead_time_s=config.voice_lead_time_s,
+            robot_precue_lead_s=config.robot_precue_lead_s,
+            min_event_time_s=config.min_event_time_s,
         )
         for frame in range(frames):
             ctx.world.tick()
@@ -266,8 +269,8 @@ def debug_audio(events_path: Path, *, voice_level: int, out_path: Path) -> int:
     return 0
 
 
-def debug_variants(run_dir: Path) -> int:
-    return render_variants_impl(run_dir)
+def debug_variants(run_dir: Path, *, audio_only: bool) -> int:
+    return render_variants_impl(run_dir, audio_only=audio_only)
 
 
 def _add_client_args(parser: argparse.ArgumentParser) -> None:
@@ -363,6 +366,12 @@ def main() -> int:
 
     variants = subparsers.add_parser("variants", help="Render all stimulus variants")
     variants.add_argument("--run-dir", type=Path, required=True)
+    variants.add_argument(
+        "--audio-only",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Only generate audio_assets and robot_timeline.csv",
+    )
 
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
@@ -438,7 +447,7 @@ def main() -> int:
     if args.command == "audio":
         return debug_audio(args.events, voice_level=args.voice_level, out_path=args.out)
     if args.command == "variants":
-        return debug_variants(args.run_dir)
+        return debug_variants(args.run_dir, audio_only=args.audio_only)
 
     raise RuntimeError("Unknown command")
 

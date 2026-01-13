@@ -1,0 +1,18 @@
+episode_id: "P4_T3_signal_intersection"
+suite_id: "P4"
+type_id: "T3"
+town: { preferred: ["Town10"], fallback: ["Town05","Town03"] }
+seed: 4003
+ego: { target_speed_kmh: 38, control_mode: "tm" }
+topology_query:
+  start_selector: { type: "signalized_junction_approach", offset_back_m: 200 }
+  decision_point_selector: { type: "stop_line_distance", trigger_distance_m: 90 }
+  route_selector: { type: "pass_junction_then_forward", forward_m: 260 }
+npc_plan:
+  traffic_manager: { vehicle_count: 34, walker_count: 40 }
+event_markers:
+  - name: "approach_signal"
+    trigger: { type: "distance_to_stop_line", meters: 90 }
+    expected_action: "prepare_stop_or_go"
+    tags: ["signal","dense_peds"]
+termination: { mode: "time_or_distance", max_time_s: 60, min_progress_m: 120 }
