@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import queue
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,9 +36,17 @@ class CameraRecorder:
         blueprint.set_attribute("sensor_tick", "0.0")
 
         transform = self._resolve_transform()
+        logging.info(
+            "Spawning RGB camera preset=%s size=%sx%s fov=%.1f",
+            self.config.preset,
+            self.config.width,
+            self.config.height,
+            self.config.fov,
+        )
         self._queue = queue.Queue()
         self._camera = self.world.spawn_actor(blueprint, transform, attach_to=self.ego_vehicle)
         self._camera.listen(self._queue.put)
+        logging.info("Camera sensor started")
 
     def stop(self) -> None:
         if self._camera is None:
@@ -52,6 +61,7 @@ class CameraRecorder:
             pass
         self._camera = None
         self._queue = None
+        logging.info("Camera sensor stopped")
 
     def record_frames(
         self,
@@ -60,27 +70,46 @@ class CameraRecorder:
         *,
         timeout: float = 5.0,
         on_tick: Optional[TickCallback] = None,
+        log_interval: int = 50,
     ) -> None:
         if self._camera is None or self._queue is None:
             raise RuntimeError("Recorder not started. Call start() first.")
         ensure_dir(frames_dir)
 
         for index in range(num_frames):
+            tick_start = time.monotonic()
             frame = self.world.tick()
+            tick_duration = time.monotonic() - tick_start
+            if tick_duration > 1.0:
+                logging.warning("World tick took %.2fs", tick_duration)
             snapshot = self.world.get_snapshot()
             image = self._get_image(frame, timeout)
             image.save_to_disk(str(frames_dir / f"{index:06d}.png"))
+            if log_interval > 0 and (
+                index == 0
+                or (index + 1) % log_interval == 0
+                or index + 1 == num_frames
+            ):
+                logging.info("Recorded frame %d/%d", index + 1, num_frames)
             if on_tick:
                 on_tick(snapshot, image, index)
 
     def _get_image(self, frame: int, timeout: float) -> carla.Image:
         assert self._queue is not None
         deadline = time.monotonic() + timeout
+        next_report = time.monotonic() + 1.0
         while time.monotonic() < deadline:
             remaining = max(0.0, deadline - time.monotonic())
             try:
                 image = self._queue.get(timeout=remaining)
             except queue.Empty:
+                if time.monotonic() >= next_report:
+                    logging.info(
+                        "Waiting for camera frame %d (queue=%d)",
+                        frame,
+                        self._queue.qsize(),
+                    )
+                    next_report = time.monotonic() + 1.0
                 continue
             if image.frame == frame:
                 return image

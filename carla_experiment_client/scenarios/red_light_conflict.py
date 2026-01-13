@@ -32,6 +32,8 @@ class RedLightConflictScenario(BaseScenario):
         )
         traffic_light = None
         cross_spawn = None
+        if ego_spawn is None and bool(params.get("fast_spawn")):
+            ego_spawn = pick_spawn_point(spawn_points, rng)
         if ego_spawn is None:
             lights = list(world.get_actors().filter("traffic.traffic_light"))
             rng.shuffle(lights)
@@ -133,7 +135,11 @@ class RedLightConflictScenario(BaseScenario):
             try:
                 light.set_state(carla.TrafficLightState.Red)
                 light.set_red_time(self.config.duration + 5.0)
-                for other in light.get_group():
+                try:
+                    group = light.get_group()
+                except AttributeError:
+                    group = []
+                for other in group:
                     if other.id == light.id:
                         continue
                     other.set_state(carla.TrafficLightState.Green)

@@ -1,0 +1,32 @@
+presets:
+  fast:
+    fps: 10
+    duration: 6.0
+    fixed_delta_seconds: 0.1
+    camera:
+      width: 640
+      height: 360
+    scenario_overrides:
+      background_vehicle_count: 6
+      background_walker_count: 0
+      fast_spawn: true
+    scale_frames: true
+    scale_min_event_time: true
+  fast_long:
+    fps: 10
+    duration: 20.0
+    fixed_delta_seconds: 0.1
+    camera:
+      width: 640
+      height: 360
+    scenario_overrides:
+      background_vehicle_count: 6
+      background_walker_count: 0
+      fast_spawn: true
+    scale_frames: true
+    scale_min_event_time: true
+  final:
+    fps: 20
+    camera:
+      width: 1280
+      height: 720

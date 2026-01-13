@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import shutil
 from pathlib import Path
 
@@ -13,7 +14,9 @@ from .carla_client import restore_world, setup_carla
 from .config import (
     ScenarioConfig,
     apply_client_overrides,
+    apply_render_preset,
     load_client_config,
+    load_render_presets,
     load_scenario_config,
 )
 from .events.extractor import EventExtractor
@@ -22,6 +25,18 @@ from .sensors.camera_recorder import record_video
 from .utils import ensure_dir, utc_timestamp, write_json
 from .video import encode_frames_to_mp4
 from .weather import apply_weather
+
+
+def _attach_file_logger(out_dir: Path) -> None:
+    logger = logging.getLogger()
+    log_path = out_dir / "run.log"
+    for handler in logger.handlers:
+        if isinstance(handler, logging.FileHandler) and Path(handler.baseFilename) == log_path:
+            return
+    handler = logging.FileHandler(log_path, mode="a")
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+    logger.addHandler(handler)
 
 
 def _write_metadata(
@@ -33,6 +48,7 @@ def _write_metadata(
     server_version: str,
     client_version: str,
     allow_version_mismatch: bool,
+    render_preset: str | None,
 ) -> None:
     payload = {
         "scenario_id": config.scenario_id,
@@ -53,6 +69,7 @@ def _write_metadata(
         "server_version": server_version,
         "client_version": client_version,
         "allow_version_mismatch": allow_version_mismatch,
+        "render_preset": render_preset,
     }
     write_json(out_dir / "run_metadata.json", payload)
 
@@ -66,11 +83,26 @@ def run_scenario(
     tm_port: int,
     timeout: float,
     allow_version_mismatch: bool,
+    render_preset: str | None = None,
+    render_presets_path: Path | None = None,
 ) -> int:
     config = load_scenario_config(scenario_path)
+    if render_preset:
+        if render_presets_path is None:
+            raise ValueError("render_presets_path is required when render_preset is set")
+        presets = load_render_presets(render_presets_path)
+        if render_preset not in presets:
+            raise ValueError(f"Unknown render preset: {render_preset}")
+        config = apply_render_preset(config, presets[render_preset])
+        logging.info("Applied render preset: %s", render_preset)
     ensure_dir(out_dir)
     shutil.copy2(scenario_path, out_dir / "scenario.yaml")
+    _attach_file_logger(out_dir)
+    logging.info("Run pid=%s", os.getpid())
+    logging.info("Scenario config: %s", scenario_path)
+    logging.info("Output dir: %s", out_dir)
 
+    logging.info("Connecting to CARLA %s:%s", host, port)
     ctx = setup_carla(
         host,
         port,
@@ -87,7 +119,9 @@ def run_scenario(
     scenario_ctx = None
     try:
         apply_weather(ctx.world, config.weather)
+        logging.info("Building scenario %s", config.scenario_id)
         scenario_ctx = build_scenario(ctx.world, ctx.traffic_manager, config)
+        logging.info("Scenario built: %s", config.scenario_id)
         extractor = EventExtractor(
             world=ctx.world,
             ego_vehicle=scenario_ctx.ego_vehicle,
@@ -102,6 +136,20 @@ def run_scenario(
             scenario_ctx.on_tick(index)
             extractor.tick(snapshot, index)
 
+        prewarm_seconds = config.params.get("prewarm_seconds")
+        if prewarm_seconds is not None:
+            prewarm_frames = int(round(float(prewarm_seconds) * config.fps))
+        else:
+            prewarm_frames = int(
+                config.params.get("prewarm_frames", max(1, int(config.fps * 0.5)))
+            )
+        if prewarm_frames > 0:
+            logging.info("Prewarming %d frames before recording", prewarm_frames)
+            for _ in range(prewarm_frames):
+                ctx.world.tick()
+
+        total_frames = int(scenario_ctx.duration * scenario_ctx.fps)
+        logging.info("Recording %d frames at %d fps", total_frames, scenario_ctx.fps)
         frames_dir = record_video(scenario_ctx, out_dir, on_tick=on_tick)
         events = extractor.finalize()
 
@@ -115,15 +163,20 @@ def run_scenario(
             ctx.server_version,
             ctx.client_version,
             allow_version_mismatch,
+            render_preset,
         )
 
+        logging.info("Encoding master_video.mp4")
         encode_frames_to_mp4(frames_dir, out_dir / "master_video.mp4", config.fps)
         logging.info("Run complete: %s", out_dir)
         return 0
     finally:
         if scenario_ctx is not None:
             for actor in scenario_ctx.actors:
-                actor.destroy()
+                try:
+                    actor.destroy()
+                except RuntimeError:
+                    logging.warning("Actor cleanup skipped (already destroyed).")
         restore_world(ctx)
 
 
@@ -141,6 +194,16 @@ def main() -> int:
     parser.add_argument("--port", type=int, help="CARLA port")
     parser.add_argument("--tm-port", type=int, help="Traffic Manager port")
     parser.add_argument("--timeout", type=float, help="Client timeout")
+    parser.add_argument(
+        "--render-preset",
+        help="Render preset name (e.g., fast, final)",
+    )
+    parser.add_argument(
+        "--render-presets",
+        type=Path,
+        default=Path("configs/render_presets.yaml"),
+        help="YAML file with render presets",
+    )
     parser.add_argument(
         "--allow-version-mismatch",
         action=argparse.BooleanOptionalAction,
@@ -173,6 +236,8 @@ def main() -> int:
         tm_port=client_config.tm_port,
         timeout=client_config.timeout,
         allow_version_mismatch=client_config.allow_version_mismatch,
+        render_preset=args.render_preset,
+        render_presets_path=args.render_presets if args.render_preset else None,
     )
 
 

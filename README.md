@@ -122,6 +122,10 @@ runs/<timestamp>/
 
 Use these commands to isolate issues by module (connection → sync tick → sensor → scenario → events → audio → variants).
 
+## Program architecture
+
+See `docs/architecture.md` for module responsibilities, interfaces, and data flow.
+
 ## Client config
 
 Default client settings live in `configs/client.yaml`:
@@ -160,6 +164,29 @@ Each YAML supports:
 - `scenario` parameters (trigger frames, steer values, etc.)
 
 If a `spawn_index` is invalid, the scenario will fall back to a random spawn point.
+
+## Render presets (quick vs final)
+
+Use render presets to switch between fast smoke tests and full-quality renders:
+
+```
+./run_scenario.py --scenario configs/scenarios/highway_merge_30s.yaml \
+  --render-preset fast
+
+./run_scenario.py --scenario configs/scenarios/highway_merge_30s.yaml \
+  --render-preset fast_long
+
+./run_scenario.py --scenario configs/scenarios/highway_merge_30s.yaml \
+  --render-preset final
+```
+
+Presets live in `configs/render_presets.yaml` and can override fps, duration,
+camera resolution, and background traffic. When fps/duration changes, frame-based
+scenario triggers are scaled automatically so events stay in the same relative
+time window.
+
+Recording starts after a short prewarm period (`prewarm_seconds`) to avoid initial
+spawn drop or jitter at frame 0.
 
 ## events.json schema
 

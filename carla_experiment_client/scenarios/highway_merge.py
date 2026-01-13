@@ -25,17 +25,22 @@ class HighwayMergeScenario(BaseScenario):
         tm: carla.TrafficManager,
         rng: random.Random,
     ) -> ScenarioContext:
+        params = self.config.params
         spawn_points = world.get_map().get_spawn_points()
         ego_spawn = get_spawn_point_by_index(
-            spawn_points, self.config.params.get("ego_spawn_index")
-        ) or find_spawn_point(
+            spawn_points, params.get("ego_spawn_index")
+        )
+        if ego_spawn is None and bool(params.get("fast_spawn")):
+            ego_spawn = pick_spawn_point(spawn_points, rng)
+        if ego_spawn is None:
+            ego_spawn = find_spawn_point(
             world,
             rng,
             min_lanes=2,
             avoid_junction=True,
             forward_clear_m=120.0,
             avoid_traffic_lights=True,
-        )
+            )
         ego = self._spawn_vehicle(
             world,
             tm,
@@ -89,8 +94,8 @@ class HighwayMergeScenario(BaseScenario):
         )
         log_spawn(merge_vehicle, "merge_vehicle")
 
-        lead_distance = float(self.config.params.get("lead_slow_distance_m", 35.0))
-        lead_speed_delta = float(self.config.params.get("lead_slow_speed_delta", 30.0))
+        lead_distance = float(params.get("lead_slow_distance_m", 35.0))
+        lead_speed_delta = float(params.get("lead_slow_speed_delta", 30.0))
         lead_spawn = offset_transform(ego_spawn, forward=lead_distance)
         lead_vehicle = self._spawn_vehicle(
             world,
@@ -104,9 +109,9 @@ class HighwayMergeScenario(BaseScenario):
         tm.vehicle_percentage_speed_difference(lead_vehicle, lead_speed_delta)
         log_spawn(lead_vehicle, "lead_slow")
 
-        background_vehicle_count = int(self.config.params.get("background_vehicle_count", 18))
-        background_walker_count = int(self.config.params.get("background_walker_count", 10))
-        background_min_distance = float(self.config.params.get("background_min_distance_m", 20.0))
+        background_vehicle_count = int(params.get("background_vehicle_count", 18))
+        background_walker_count = int(params.get("background_walker_count", 10))
+        background_min_distance = float(params.get("background_min_distance_m", 20.0))
         background = self._spawn_background_traffic(
             world,
             tm,
@@ -134,13 +139,13 @@ class HighwayMergeScenario(BaseScenario):
             scenario_id=self.config.scenario_id,
         )
 
-        start_frame = int(self.config.params.get("merge_trigger_frame", self.config.fps * 2))
-        duration_frames = int(self.config.params.get("merge_duration_frames", self.config.fps))
-        throttle = float(self.config.params.get("merge_throttle", 0.55))
-        base_steer = float(self.config.params.get("merge_steer", 0.2))
-        relocate_on_trigger = bool(self.config.params.get("merge_relocate_on_trigger", False))
-        relocate_forward = float(self.config.params.get("merge_relocate_forward_m", 8.0))
-        relocate_right = float(self.config.params.get("merge_relocate_right_m", 3.5))
+        start_frame = int(params.get("merge_trigger_frame", self.config.fps * 2))
+        duration_frames = int(params.get("merge_duration_frames", self.config.fps))
+        throttle = float(params.get("merge_throttle", 0.55))
+        base_steer = float(params.get("merge_steer", 0.2))
+        relocate_on_trigger = bool(params.get("merge_relocate_on_trigger", False))
+        relocate_forward = float(params.get("merge_relocate_forward_m", 8.0))
+        relocate_right = float(params.get("merge_relocate_right_m", 3.5))
 
         relative = merge_vehicle.get_transform().location - ego_spawn.location
         ego_right = right_vector(ego_spawn)

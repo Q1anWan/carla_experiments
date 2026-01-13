@@ -18,3 +18,7 @@ Key tuning:
 - emergency_spawn_distance_m, emergency_speed_delta
 - emergency_boost_start_frame, emergency_boost_frames, emergency_throttle
 - ego_speed_delta, ego_follow_distance_m
+
+Recording notes:
+- All actors spawn before recording; runtime relocation is disabled.
+- `prewarm_seconds` ticks the world before frame 0 to avoid spawn drop.

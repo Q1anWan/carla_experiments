@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import logging
+import time
 import random
 from typing import Optional
 
@@ -47,13 +48,27 @@ def connect_client(
     return client, server_version, client_version
 
 
+def _map_matches(current_map: str, target_map: str) -> bool:
+    if current_map == target_map:
+        return True
+    if current_map.endswith(target_map):
+        return True
+    return current_map.split("/")[-1] == target_map
+
+
 def load_world(client: carla.Client, map_name: Optional[str]) -> carla.World:
-    if map_name:
-        logging.info("Loading map %s", map_name)
-        world = client.load_world(map_name)
-    else:
-        world = client.get_world()
-    return world
+    if not map_name:
+        return client.get_world()
+    current_world = client.get_world()
+    try:
+        current_map = current_world.get_map().name
+    except RuntimeError:
+        current_map = ""
+    if current_map and _map_matches(current_map, map_name):
+        logging.info("Map already loaded: %s", current_map)
+        return current_world
+    logging.info("Loading map %s", map_name)
+    return client.load_world(map_name)
 
 
 def configure_world(
@@ -68,8 +83,60 @@ def configure_world(
     settings.synchronous_mode = sync_mode
     settings.fixed_delta_seconds = fixed_delta_seconds if sync_mode else None
     settings.no_rendering_mode = no_rendering_mode
-    world.apply_settings(settings)
+    if _settings_match(original, settings):
+        logging.info(
+            "World settings already match requested sync config "
+            "(sync=%s fixed_delta=%.3f no_render=%s).",
+            original.synchronous_mode,
+            float(original.fixed_delta_seconds or 0.0),
+            original.no_rendering_mode,
+        )
+        return original
+    logging.info(
+        "Applying world settings (sync=%s fixed_delta=%.3f no_render=%s)",
+        settings.synchronous_mode,
+        float(settings.fixed_delta_seconds or 0.0),
+        settings.no_rendering_mode,
+    )
+    for attempt in range(3):
+        try:
+            start = time.monotonic()
+            world.apply_settings(settings)
+            logging.info("World settings applied in %.2fs", time.monotonic() - start)
+            return original
+        except RuntimeError as exc:
+            logging.warning(
+                "apply_settings attempt %d failed: %s", attempt + 1, exc
+            )
+            try:
+                current = world.get_settings()
+            except RuntimeError:
+                current = None
+            if current is not None and _settings_match(current, settings):
+                logging.info("World settings already applied after retry.")
+                return original
+            time.sleep(2.0)
+    raise RuntimeError(
+        "Failed to apply world settings after retries. "
+        "Check server load or restart CARLA server."
+    )
     return original
+
+
+def _settings_match(current: carla.WorldSettings, target: carla.WorldSettings) -> bool:
+    return (
+        current.synchronous_mode == target.synchronous_mode
+        and current.no_rendering_mode == target.no_rendering_mode
+        and _delta_match(current.fixed_delta_seconds, target.fixed_delta_seconds)
+    )
+
+
+def _delta_match(current: Optional[float], target: Optional[float]) -> bool:
+    if current is None and target is None:
+        return True
+    if current is None or target is None:
+        return False
+    return abs(float(current) - float(target)) < 1e-4
 
 
 def configure_traffic_manager(

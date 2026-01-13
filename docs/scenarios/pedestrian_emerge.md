@@ -19,3 +19,7 @@ Key tuning:
 - trigger_frame, walker_start_ahead_m, walker_side_offset_m
 - occluder_forward_m, occluder_side_offset_m, occluder_blueprint
 - ego_speed_delta, ego_follow_distance_m
+
+Recording notes:
+- All actors spawn before recording; runtime relocation is disabled.
+- `prewarm_seconds` ticks the world before frame 0 to avoid spawn drop.

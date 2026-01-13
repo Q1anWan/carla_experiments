@@ -10,6 +10,14 @@
 
 ---
 
+# Repo implementation notes (current)
+
+- Code overview: `docs/architecture.md`.
+- Runtime config uses `configs/client.yaml` + `configs/scenarios/*.yaml`.
+- `configs/render_presets.yaml` provides `fast`, `fast_long`, `final`.
+- `prewarm_seconds` ticks the world before recording to avoid initial drop.
+- All actors spawn before recording; runtime relocation is disabled in 30s configs.
+
 # CARLA 实验刺激场景库设计文档（Suites P1–P6）
 
 ## 0. 关键术语与实验结构（避免歧义）

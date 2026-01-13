@@ -19,3 +19,7 @@ Key tuning:
 - ego_throttle, turn_throttle
 - ego_speed_delta, ego_follow_distance_m
 - background_vehicle_count
+
+Recording notes:
+- All actors spawn before recording; runtime relocation is disabled.
+- `prewarm_seconds` ticks the world before frame 0 to avoid spawn drop.

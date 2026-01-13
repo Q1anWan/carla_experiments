@@ -80,11 +80,14 @@ class UnprotectedLeftTurnScenario(BaseScenario):
         tm: carla.TrafficManager,
         rng: random.Random,
     ) -> ScenarioContext:
+        params = self.config.params
         spawn_points = world.get_map().get_spawn_points()
         ego_spawn = get_spawn_point_by_index(
-            spawn_points, self.config.params.get("ego_spawn_index")
+            spawn_points, params.get("ego_spawn_index")
         )
         turn_sign = None
+        if ego_spawn is None and bool(params.get("fast_spawn")):
+            ego_spawn = pick_spawn_point(spawn_points, rng)
         if ego_spawn is None:
             candidate = None
             for sp in rng.sample(spawn_points, k=min(len(spawn_points), 40)):
@@ -178,12 +181,12 @@ class UnprotectedLeftTurnScenario(BaseScenario):
             scenario_id=self.config.scenario_id,
         )
 
-        approach_frames = int(self.config.params.get("approach_frames", self.config.fps * 2))
-        turn_frames = int(self.config.params.get("turn_frames", self.config.fps * 2))
-        throttle = float(self.config.params.get("ego_throttle", 0.5))
-        turn_steer = float(self.config.params.get("turn_steer", -0.25))
-        turn_throttle = float(self.config.params.get("turn_throttle", throttle * 0.7))
-        auto_turn = bool(self.config.params.get("turn_steer_auto", True))
+        approach_frames = int(params.get("approach_frames", self.config.fps * 2))
+        turn_frames = int(params.get("turn_frames", self.config.fps * 2))
+        throttle = float(params.get("ego_throttle", 0.5))
+        turn_steer = float(params.get("turn_steer", -0.25))
+        turn_throttle = float(params.get("turn_throttle", throttle * 0.7))
+        auto_turn = bool(params.get("turn_steer_auto", True))
         if auto_turn and turn_sign is not None:
             turn_steer = abs(turn_steer) * turn_sign
 

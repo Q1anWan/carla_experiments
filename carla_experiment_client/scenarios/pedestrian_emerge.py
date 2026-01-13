@@ -13,6 +13,7 @@ from .base import (
     get_spawn_point_by_index,
     log_spawn,
     offset_transform,
+    pick_spawn_point,
     right_vector,
 )
 
@@ -24,17 +25,22 @@ class PedestrianEmergeScenario(BaseScenario):
         tm: carla.TrafficManager,
         rng: random.Random,
     ) -> ScenarioContext:
+        params = self.config.params
         spawn_points = world.get_map().get_spawn_points()
         ego_spawn = get_spawn_point_by_index(
-            spawn_points, self.config.params.get("ego_spawn_index")
-        ) or find_spawn_point(
+            spawn_points, params.get("ego_spawn_index")
+        )
+        if ego_spawn is None and bool(params.get("fast_spawn")):
+            ego_spawn = pick_spawn_point(spawn_points, rng)
+        if ego_spawn is None:
+            ego_spawn = find_spawn_point(
             world,
             rng,
             min_lanes=2,
             avoid_junction=True,
             forward_clear_m=120.0,
             avoid_traffic_lights=True,
-        )
+            )
         ego = self._spawn_vehicle(
             world,
             tm,
@@ -47,9 +53,9 @@ class PedestrianEmergeScenario(BaseScenario):
         log_spawn(ego, "ego")
         self._apply_ego_tm(tm, ego)
 
-        ahead_m = float(self.config.params.get("walker_start_ahead_m", 35.0))
-        side_m = float(self.config.params.get("walker_side_offset_m", 6.0))
-        relocate_on_trigger = bool(self.config.params.get("relocate_on_trigger", True))
+        ahead_m = float(params.get("walker_start_ahead_m", 35.0))
+        side_m = float(params.get("walker_side_offset_m", 6.0))
+        relocate_on_trigger = bool(params.get("relocate_on_trigger", True))
         walker_location = ego_spawn.location + ego_spawn.get_forward_vector() * ahead_m
         walker_location = walker_location + right_vector(ego_spawn) * side_m
 
@@ -57,9 +63,9 @@ class PedestrianEmergeScenario(BaseScenario):
         walker, controller = self._spawn_walker(world, rng, walker_transform, speed=1.4)
         log_spawn(walker, "pedestrian")
 
-        occluder_forward = float(self.config.params.get("occluder_forward_m", 18.0))
-        occluder_side = float(self.config.params.get("occluder_side_offset_m", 3.5))
-        occluder_bp = self.config.params.get("occluder_blueprint", "vehicle.*")
+        occluder_forward = float(params.get("occluder_forward_m", 18.0))
+        occluder_side = float(params.get("occluder_side_offset_m", 3.5))
+        occluder_bp = params.get("occluder_blueprint", "vehicle.*")
         occluder_transform = offset_transform(
             ego_spawn, forward=occluder_forward, right=occluder_side
         )
@@ -88,9 +94,9 @@ class PedestrianEmergeScenario(BaseScenario):
         )
         log_spawn(occluder, "occluder_vehicle")
 
-        background_vehicle_count = int(self.config.params.get("background_vehicle_count", 16))
-        background_walker_count = int(self.config.params.get("background_walker_count", 12))
-        background_min_distance = float(self.config.params.get("background_min_distance_m", 20.0))
+        background_vehicle_count = int(params.get("background_vehicle_count", 16))
+        background_walker_count = int(params.get("background_walker_count", 12))
+        background_min_distance = float(params.get("background_min_distance_m", 20.0))
         background = self._spawn_background_traffic(
             world,
             tm,
@@ -118,9 +124,9 @@ class PedestrianEmergeScenario(BaseScenario):
         )
         ctx.tag_actor("pedestrian", walker)
 
-        trigger_distance = float(self.config.params.get("trigger_distance", 25.0))
-        target_offset = float(self.config.params.get("cross_offset", 8.0))
-        trigger_frame = self.config.params.get("trigger_frame")
+        trigger_distance = float(params.get("trigger_distance", 25.0))
+        target_offset = float(params.get("cross_offset", 8.0))
+        trigger_frame = params.get("trigger_frame")
         started = {"value": False}
         target_state = {
             "location": walker_location + right_vector(ego_spawn) * target_offset

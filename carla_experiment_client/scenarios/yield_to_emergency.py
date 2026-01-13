@@ -25,17 +25,22 @@ class YieldToEmergencyScenario(BaseScenario):
         tm: carla.TrafficManager,
         rng: random.Random,
     ) -> ScenarioContext:
+        params = self.config.params
         spawn_points = world.get_map().get_spawn_points()
         ego_spawn = get_spawn_point_by_index(
-            spawn_points, self.config.params.get("ego_spawn_index")
-        ) or find_spawn_point(
+            spawn_points, params.get("ego_spawn_index")
+        )
+        if ego_spawn is None and bool(params.get("fast_spawn")):
+            ego_spawn = pick_spawn_point(spawn_points, rng)
+        if ego_spawn is None:
+            ego_spawn = find_spawn_point(
             world,
             rng,
             min_lanes=2,
             avoid_junction=True,
             forward_clear_m=120.0,
             avoid_traffic_lights=True,
-        )
+            )
         ego = self._spawn_vehicle(
             world,
             tm,
@@ -48,7 +53,7 @@ class YieldToEmergencyScenario(BaseScenario):
         log_spawn(ego, "ego")
         self._apply_ego_tm(tm, ego)
 
-        emergency_distance = float(self.config.params.get("emergency_spawn_distance_m", 35.0))
+        emergency_distance = float(params.get("emergency_spawn_distance_m", 35.0))
         emergency_spawn = offset_transform(ego_spawn, forward=-emergency_distance)
         try:
             emergency = self._spawn_vehicle(
@@ -73,21 +78,22 @@ class YieldToEmergencyScenario(BaseScenario):
         log_spawn(emergency, "emergency")
 
         try:
-            emergency.set_light_state(
+            lights = carla.VehicleLightState(
                 carla.VehicleLightState.Special1 | carla.VehicleLightState.Special2
             )
-        except RuntimeError:
+            emergency.set_light_state(lights)
+        except (RuntimeError, TypeError, AttributeError):
             pass
         self._configure_vehicle_tm(
             tm,
             emergency,
-            speed_delta=_get_param_float(self.config.params, "emergency_speed_delta"),
-            follow_distance=_get_param_float(self.config.params, "emergency_follow_distance_m"),
+            speed_delta=_get_param_float(params, "emergency_speed_delta"),
+            follow_distance=_get_param_float(params, "emergency_follow_distance_m"),
         )
 
-        background_vehicle_count = int(self.config.params.get("background_vehicle_count", 20))
-        background_walker_count = int(self.config.params.get("background_walker_count", 10))
-        background_min_distance = float(self.config.params.get("background_min_distance_m", 20.0))
+        background_vehicle_count = int(params.get("background_vehicle_count", 20))
+        background_walker_count = int(params.get("background_walker_count", 10))
+        background_min_distance = float(params.get("background_min_distance_m", 20.0))
         background = self._spawn_background_traffic(
             world,
             tm,
@@ -114,9 +120,9 @@ class YieldToEmergencyScenario(BaseScenario):
         )
         ctx.tag_actor("emergency", emergency)
 
-        boost_start = int(self.config.params.get("emergency_boost_start_frame", 0))
-        boost_frames = int(self.config.params.get("emergency_boost_frames", self.config.fps * 2))
-        throttle = float(self.config.params.get("emergency_throttle", 0.85))
+        boost_start = int(params.get("emergency_boost_start_frame", 0))
+        boost_frames = int(params.get("emergency_boost_frames", self.config.fps * 2))
+        throttle = float(params.get("emergency_throttle", 0.85))
 
         def boost_emergency(frame: int) -> None:
             if frame == boost_start:

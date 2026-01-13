@@ -24,9 +24,10 @@ scenario:
   cut_in_duration_frames: 50
   cut_in_throttle: 0.6
   cut_in_steer: -0.22
-  cut_in_relocate_on_trigger: true
+  cut_in_relocate_on_trigger: false
   cut_in_relocate_forward_m: 8.0
   cut_in_relocate_right_m: 3.5
+  prewarm_seconds: 1.0
   lead_slow_distance_m: 30.0
   lead_slow_speed_delta: 35.0
   ego_speed_delta: 20.0

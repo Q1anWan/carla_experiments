@@ -61,6 +61,14 @@ class BaseScenario:
         role_name: str,
         autopilot: bool = True,
     ) -> carla.Vehicle:
+        logging.info(
+            "Spawning vehicle role=%s filter=%s at (%.1f, %.1f, %.1f)",
+            role_name,
+            blueprint_filter,
+            transform.location.x,
+            transform.location.y,
+            transform.location.z,
+        )
         blueprint_library = world.get_blueprint_library()
         blueprints = blueprint_library.filter(blueprint_filter)
         if not blueprints:
@@ -119,6 +127,12 @@ class BaseScenario:
         walker = world.try_spawn_actor(walker_bp, transform)
         if walker is None:
             raise RuntimeError("Failed to spawn walker")
+        logging.info(
+            "Spawned walker at (%.1f, %.1f, %.1f)",
+            transform.location.x,
+            transform.location.y,
+            transform.location.z,
+        )
         controller_bp = blueprint_library.find("controller.ai.walker")
         controller = world.spawn_actor(controller_bp, carla.Transform(), attach_to=walker)
         controller.set_max_speed(speed)
@@ -135,12 +149,18 @@ class BaseScenario:
         exclude_locations: Iterable[carla.Location],
         min_distance: float = 15.0,
     ) -> list[carla.Actor]:
+        logging.info(
+            "Spawning background traffic vehicles=%d walkers=%d",
+            vehicle_count,
+            walker_count,
+        )
         actors: list[carla.Actor] = []
         if vehicle_count > 0:
             blueprint_library = world.get_blueprint_library()
             blueprints = blueprint_library.filter("vehicle.*")
             spawn_points = world.get_map().get_spawn_points()
             rng.shuffle(spawn_points)
+            spawned = 0
             for sp in spawn_points:
                 if len([a for a in actors if isinstance(a, carla.Vehicle)]) >= vehicle_count:
                     break
@@ -152,8 +172,13 @@ class BaseScenario:
                     continue
                 vehicle.set_autopilot(True, tm.get_port())
                 actors.append(vehicle)
+                spawned += 1
+                if spawned % 5 == 0:
+                    logging.info("Background vehicles spawned: %d/%d", spawned, vehicle_count)
+            logging.info("Background vehicles spawned total: %d", spawned)
 
         if walker_count > 0:
+            spawned_walkers = 0
             for _ in range(walker_count * 3):
                 if len([a for a in actors if a.type_id.startswith("walker.pedestrian")]) >= walker_count:
                     break
@@ -163,12 +188,22 @@ class BaseScenario:
                 if any(location.distance(loc) < min_distance for loc in exclude_locations):
                     continue
                 walker_transform = carla.Transform(location)
-                walker, controller = self._spawn_walker(world, rng, walker_transform, speed=1.4)
+                try:
+                    walker, controller = self._spawn_walker(
+                        world, rng, walker_transform, speed=1.4
+                    )
+                except RuntimeError as exc:
+                    logging.warning("Walker spawn skipped: %s", exc)
+                    continue
                 controller.start()
                 dest = world.get_random_location_from_navigation()
                 if dest is not None:
                     controller.go_to_location(dest)
                 actors.extend([walker, controller])
+                spawned_walkers += 1
+                if spawned_walkers % 5 == 0:
+                    logging.info("Background walkers spawned: %d/%d", spawned_walkers, walker_count)
+            logging.info("Background walkers spawned total: %d", spawned_walkers)
         return actors
 
     def _maybe_add_ego_brake(self, ctx: ScenarioContext, tm: carla.TrafficManager) -> None:
@@ -344,14 +379,28 @@ def find_spawn_point(
     junction_ahead_m: float = 60.0,
     avoid_traffic_lights: bool = False,
     traffic_light_threshold_m: float = 30.0,
+    max_candidates: int = 60,
 ) -> carla.Transform:
-    spawn_points = world.get_map().get_spawn_points()
+    map_obj = world.get_map()
+    spawn_points = map_obj.get_spawn_points()
     if not spawn_points:
         raise RuntimeError("No spawn points available")
-    rng.shuffle(spawn_points)
+    logging.info(
+        "Finding spawn point (min_lanes=%d avoid_junction=%s forward_clear=%.1f require_junction=%s)",
+        min_lanes,
+        avoid_junction,
+        forward_clear_m,
+        require_junction_ahead,
+    )
+    candidates = list(spawn_points)
+    if max_candidates > 0 and len(candidates) > max_candidates:
+        candidates = rng.sample(candidates, k=max_candidates)
+    rng.shuffle(candidates)
     stop_waypoints = collect_stop_waypoints(world) if avoid_traffic_lights else []
-    for sp in spawn_points:
-        waypoint = world.get_map().get_waypoint(sp.location)
+    for index, sp in enumerate(candidates, start=1):
+        if index % 15 == 0:
+            logging.info("Spawn point search checked %d candidates", index)
+        waypoint = map_obj.get_waypoint(sp.location)
         if avoid_junction and waypoint.is_junction:
             continue
         if min_lanes > 1 and count_driving_lanes(waypoint) < min_lanes:
@@ -364,6 +413,12 @@ def find_spawn_point(
             stop_waypoints, sp.location, traffic_light_threshold_m
         ):
             continue
+        logging.info(
+            "Spawn point selected at (%.1f, %.1f, %.1f)",
+            sp.location.x,
+            sp.location.y,
+            sp.location.z,
+        )
         return sp
     return rng.choice(spawn_points)
 
