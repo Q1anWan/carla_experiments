@@ -78,18 +78,27 @@ class EventExtractor:
         emergency = self._nearest_emergency_vehicle(100.0)
         if emergency:
             emergency_dist = emergency.get_location().distance(self.ego_vehicle.get_location())
-            # Track distance change to detect approach
-            prev_emergency_dist = getattr(self, "_prev_emergency_dist", {}).get(emergency.id)
-            if not hasattr(self, "_prev_emergency_dist"):
-                self._prev_emergency_dist = {}
-            self._prev_emergency_dist[emergency.id] = emergency_dist
-            # Require: close enough AND getting closer (approaching)
-            is_approaching = prev_emergency_dist is not None and emergency_dist < prev_emergency_dist - 0.5
-            if emergency_dist < 60.0 and is_approaching:
-                # Ego yields by any form of speed reduction
-                is_yielding = control.brake > 0.02 or accel < -0.2 or speed < 12.0
-                if is_yielding:
-                    self._emit(t, "yield_to_emergency")
+            # Track distance history to detect approach (over multiple ticks)
+            if not hasattr(self, "_emergency_dist_history"):
+                self._emergency_dist_history = {}
+            history = self._emergency_dist_history.setdefault(emergency.id, [])
+            history.append(emergency_dist)
+            if len(history) > 20:  # Keep last 20 samples (~2s at 10fps)
+                history.pop(0)
+            # Approaching = distance decreased over recent history
+            is_approaching = False
+            if len(history) >= 5:
+                # Compare current dist to average of older samples
+                old_avg = sum(history[:len(history)//2]) / (len(history)//2)
+                is_approaching = emergency_dist < old_avg - 1.0  # Getting closer by 1m+
+            # Trigger when emergency vehicle is approaching and close
+            # Note: CARLA autopilot doesn't automatically yield to emergency vehicles,
+            # so we don't require ego to be yielding - just detect the situation
+            if emergency_dist < 40.0 and is_approaching:
+                self._emit(t, "yield_to_emergency")
+            # Also trigger if emergency is very close regardless of approach
+            elif emergency_dist < 20.0:
+                self._emit(t, "yield_to_emergency")
 
         # --- EGO Behavior Detection ---
 
