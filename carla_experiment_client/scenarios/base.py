@@ -124,6 +124,9 @@ class BaseScenario:
         walker_bp = rng.choice(walkers)
         if walker_bp.has_attribute("role_name"):
             walker_bp.set_attribute("role_name", role_name)
+        # Set walker speed attribute on blueprint (more reliable than controller)
+        if walker_bp.has_attribute("speed"):
+            walker_bp.set_attribute("speed", str(speed))
         walker = world.try_spawn_actor(walker_bp, transform)
         if walker is None:
             raise RuntimeError("Failed to spawn walker")
@@ -135,8 +138,35 @@ class BaseScenario:
         )
         controller_bp = blueprint_library.find("controller.ai.walker")
         controller = world.spawn_actor(controller_bp, carla.Transform(), attach_to=walker)
-        controller.set_max_speed(speed)
+        # Note: set_max_speed should be called AFTER controller.start() and go_to_location()
+        # Store speed for later use; caller should call controller.start() then set speed
+        controller._target_speed = speed  # Store for later use
         return walker, controller
+
+    def _start_walker_controller(
+        self,
+        world: carla.World,
+        controller: carla.Actor,
+        destination: carla.Location = None,
+    ) -> None:
+        """Start walker controller with proper initialization order.
+
+        Args:
+            world: CARLA world
+            controller: Walker AI controller
+            destination: Target location (if None, uses random navigation point)
+        """
+        controller.start()
+        if destination is None:
+            destination = world.get_random_location_from_navigation()
+        if destination is not None:
+            controller.go_to_location(destination)
+        # Now set speed (must be after start and go_to_location)
+        speed = getattr(controller, "_target_speed", 1.3)
+        try:
+            controller.set_max_speed(speed)
+        except RuntimeError as e:
+            logging.warning("Walker speed setting failed: %s", e)
 
     def _spawn_background_traffic(
         self,
@@ -195,10 +225,7 @@ class BaseScenario:
                 except RuntimeError as exc:
                     logging.warning("Walker spawn skipped: %s", exc)
                     continue
-                controller.start()
-                dest = world.get_random_location_from_navigation()
-                if dest is not None:
-                    controller.go_to_location(dest)
+                self._start_walker_controller(world, controller)
                 actors.extend([walker, controller])
                 spawned_walkers += 1
                 if spawned_walkers % 5 == 0:
@@ -265,15 +292,29 @@ class BaseScenario:
                 logging.warning("TM auto lane change unsupported for %s", vehicle.id)
 
     def _apply_ego_tm(self, tm: carla.TrafficManager, ego: carla.Vehicle) -> None:
+        """Apply Traffic Manager configuration to ego vehicle.
+
+        Uses natural driving defaults if specific parameters are not provided,
+        ensuring more human-like behavior.
+        """
         params = self.config.params
+
+        # Natural driving defaults (more human-like)
+        # Based on human factors research for comfortable driving
+        default_speed_delta = 10.0  # Slightly slower than limit (human: 5-15% under)
+        default_follow_distance = 8.0  # Comfortable following distance (human: 1.5-2.5s headway)
+        default_ignore_lights = 0.0  # Full compliance with traffic lights
+        default_ignore_vehicles = 0.0  # Full respect for other vehicles
+        default_auto_lane_change = True
+
         self._configure_vehicle_tm(
             tm,
             ego,
-            speed_delta=_get_param_float(params, "ego_speed_delta"),
-            follow_distance=_get_param_float(params, "ego_follow_distance_m"),
-            ignore_lights=_get_param_float(params, "ego_ignore_lights_percentage"),
-            ignore_vehicles=_get_param_float(params, "ego_ignore_vehicles_percentage"),
-            auto_lane_change=_get_param_bool(params, "ego_auto_lane_change"),
+            speed_delta=_get_param_float(params, "ego_speed_delta") or default_speed_delta,
+            follow_distance=_get_param_float(params, "ego_follow_distance_m") or default_follow_distance,
+            ignore_lights=_get_param_float(params, "ego_ignore_lights_percentage") or default_ignore_lights,
+            ignore_vehicles=_get_param_float(params, "ego_ignore_vehicles_percentage") or default_ignore_vehicles,
+            auto_lane_change=_get_param_bool(params, "ego_auto_lane_change") if "ego_auto_lane_change" in params else default_auto_lane_change,
         )
 
 
@@ -319,8 +360,25 @@ def right_vector(transform: carla.Transform) -> carla.Vector3D:
         return carla.Vector3D(x=-math.sin(yaw), y=math.cos(yaw), z=0.0)
 
 
-def log_spawn(actor: carla.Actor, label: str) -> None:
-    logging.info("Spawned %s at %s", label, actor.get_transform().location)
+def log_spawn(actor: carla.Actor, label: str, transform: carla.Transform = None) -> None:
+    """Log actor spawn with reliable location.
+
+    Args:
+        actor: The spawned actor
+        label: Human-readable label for the actor
+        transform: Optional original transform (more reliable than querying actor immediately)
+    """
+    if transform is not None:
+        loc = transform.location
+    else:
+        loc = actor.get_transform().location
+    logging.info(
+        "Spawned %s at (%.1f, %.1f, %.1f)",
+        label,
+        loc.x,
+        loc.y,
+        loc.z,
+    )
 
 
 def count_driving_lanes(waypoint: carla.Waypoint) -> int:

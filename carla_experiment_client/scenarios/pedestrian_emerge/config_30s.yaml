@@ -1,0 +1,44 @@
+id: pedestrian_emerge
+map: Town05
+doc: docs/scenarios/pedestrian_emerge.md
+weather: ClearNoon
+seed: 11
+duration: 60.0
+fps: 20
+fixed_delta_seconds: 0.05
+sync_mode: true
+no_rendering_mode: false
+ego_vehicle: vehicle.tesla.model3
+camera:
+  width: 1280
+  height: 720
+  fov: 90
+  fps: 20
+  preset: driver
+events:
+  min_event_time_s: 30.0
+  voice_lead_time_s: 3.0
+  robot_precue_lead_s: 0.5
+scenario:
+  # Critical event at ~40s (frame 800 at 20fps)
+  # Pedestrian emerges from behind parked vehicle, crosses ego's path
+  ego_spawn_index: 50                # Fixed spawn on Town05 straight road
+  trigger_frame: 760                 # Pedestrian starts crossing at ~38s
+  trigger_distance: 25.0             # Alternative distance trigger
+  walker_start_ahead_m: 150.0        # Pedestrian starts FAR ahead (out of detection range)
+  walker_side_offset_m: 15.0         # Pedestrian starts far from road
+  relocate_ahead_m: 20.0             # When trigger fires, relocate 20m ahead
+  relocate_side_m: 6.0               # Start 6m from road (takes ~2s to reach ego's path)
+  cross_offset: -12.0                # Pedestrian crosses to the left (total 12m)
+  relocate_on_trigger: true          # Reposition pedestrian relative to ego at trigger
+  occluder_forward_m: 100.0          # Move occluder far ahead (not interfering)
+  occluder_side_offset_m: 15.0       # Occluder far to side
+  occluder_blueprint: vehicle.volkswagen.t2  # Tall vehicle to occlude pedestrian
+  walker_speed: 2.0                  # Moderate pedestrian speed
+  ego_speed_delta: 5.0               # Ego faster to catch up with pedestrian
+  ego_follow_distance_m: 12.0
+  ego_ignore_lights_percentage: 100.0  # Ignore traffic lights for continuous driving
+  background_vehicle_count: 6        # Reduced to minimize noise
+  background_walker_count: 0         # NO background walkers - only target pedestrian
+  background_min_distance_m: 60.0    # Keep background far away
+  prewarm_seconds: 1.0

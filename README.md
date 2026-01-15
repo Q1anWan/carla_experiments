@@ -1,136 +1,170 @@
-# CARLA Remote Experiment Client
+# CARLA Experiment Client
 
-A reproducible, headless-friendly client project to generate CARLA scenario master videos and derive 6 experimental stimulus variants.
+A reproducible, headless-friendly client for generating CARLA driving scenario videos and experimental stimuli for human factors research.
 
-## Project layout
+## Key Features
+
+- **6 Driving Scenarios**: Highway merge, lane change cut-in, pedestrian emerge, unprotected left turn, red light conflict, yield to emergency
+- **SAE J670 Telemetry**: Vehicle state recording in standard automotive coordinate system
+- **Event Detection**: Automatic extraction of driving decision points
+- **Experiment Variants**: Generate 6 stimulus variants (Voice x Robot conditions)
+
+## Project Structure
 
 ```
 carla_experiment_client/
-  carla_experiment_client/
-    audio/
-    events/
-    sensors/
-    scenarios/
-    carla_client.py
-    config.py
-    debug_tools.py
-    render_variants.py
-    run_scenario.py
-    utils.py
-    video.py
-  configs/
-    scenarios/
-    client.yaml
-  docs/
-  run_scenario.py
-  render_variants.py
-  debug_tools.py
+├── carla_experiment_client/          # Main Python package
+│   ├── scenarios/                    # Scenario packages (code + config + docs)
+│   │   ├── highway_merge/
+│   │   │   ├── scenario.py           # Scenario implementation
+│   │   │   ├── config.yaml           # Short test config
+│   │   │   ├── config_30s.yaml       # Full 30s config
+│   │   │   └── README.md             # Scenario documentation
+│   │   ├── lane_change_cut_in/
+│   │   ├── pedestrian_emerge/
+│   │   ├── red_light_conflict/
+│   │   ├── unprotected_left_turn/
+│   │   ├── yield_to_emergency/
+│   │   ├── base.py                   # Base scenario class
+│   │   └── registry.py               # Scenario factory
+│   │
+│   ├── telemetry/                    # Telemetry recording (NEW)
+│   │   ├── recorder.py               # Per-tick data recording
+│   │   └── sae_j670.py              # SAE J670 coordinate transformer
+│   │
+│   ├── events/                       # Event detection
+│   │   └── extractor.py              # Decision event extraction
+│   │
+│   ├── audio/                        # Audio generation
+│   │   ├── tts.py                    # Text-to-speech
+│   │   └── mux.py                    # Audio-video muxing
+│   │
+│   ├── sensors/                      # Camera recording
+│   │   └── camera_recorder.py        # RGB camera capture
+│   │
+│   ├── run_scenario.py               # Main execution pipeline
+│   ├── render_variants.py            # Variant generation
+│   ├── config.py                     # Configuration models
+│   └── carla_client.py               # CARLA connection
+│
+├── configs/                          # Global configuration files
+│   ├── client.yaml                   # CARLA server connection
+│   ├── render_presets.yaml           # Quality/speed presets
+│   └── natural_driving.yaml          # Traffic manager presets
+│
+├── docs/                             # Documentation
+│   ├── api/                          # API documentation
+│   │   ├── output_formats.md         # Output file descriptions
+│   │   ├── telemetry_schema.md       # Telemetry data schema
+│   │   ├── events_schema.md          # Event data schema
+│   │   └── coordinate_systems.md     # Coordinate system guide
+│   └── architecture.md               # System architecture
+│
+└── runs/                             # Output directory
 ```
 
-## Module responsibilities
+## Quick Start
 
-- `carla_experiment_client/carla_client.py`: Connect to CARLA, check versions, enable synchronous mode, configure Traffic Manager, and a minimal demo.
-- `carla_experiment_client/sensors/camera_recorder.py`: Attach RGB camera and save frames per tick in sync mode.
-- `carla_experiment_client/scenarios/*`: Six scenario classes with reproducible spawning and trigger callbacks.
-- `carla_experiment_client/events/extractor.py`: Per-tick decision event extraction and `events.json` writing.
-- `carla_experiment_client/audio/tts.py`: Text-to-speech with a stub fallback (tone) when edge-tts is not installed.
-- `carla_experiment_client/audio/mux.py`: Build narration timeline and mux with video via ffmpeg.
-- `carla_experiment_client/run_scenario.py`: CLI pipeline for master run (frames -> mp4, events, metadata).
-- `carla_experiment_client/render_variants.py`: CLI pipeline to generate 6 variants (voice x robot).
-- `carla_experiment_client/debug_tools.py`: Step-by-step debug CLI for connection, sync, camera, scenario, events, and audio.
+### Prerequisites
 
-## Requirements
+- Python 3.12+
+- CARLA 0.9.x server (Windows or Linux)
+- CARLA Python API in environment
+- ffmpeg (for video encoding)
+- Optional: edge-tts (for voice synthesis)
 
-- Python 3.12
-- CARLA Python API available in the environment
-- `ffmpeg` (required for mp4 encoding and audio muxing)
-- Optional: `edge-tts` for real TTS (fallback is a short tone)
+### Run a Scenario
 
-## Start CARLA server (Windows 11)
-
-Example (PowerShell):
-
-```
-.\CarlaUE4.exe -RenderOffScreen -world-port=2000 -quality-level=Epic
-```
-
-Make sure the server is reachable from Ubuntu (`192.168.31.32:2000`).
-
-## Run a scenario (Ubuntu client)
-
-From `PythonAPI/examples`:
-
-```
+```bash
+# Activate environment
 conda activate CARLA312
-cd carla_experiment_client
-./run_scenario.py --scenario configs/scenarios/highway_merge.yaml --out runs/20250101_120000
+
+# Run using scenario ID (uses config_30s.yaml by default)
+python run_scenario.py --scenario highway_merge --out runs/test
+
+# Or specify config file directly
+python run_scenario.py --scenario carla_experiment_client/scenarios/highway_merge/config_30s.yaml
+
+# Use render preset for quick testing
+python run_scenario.py --scenario highway_merge --render-preset fast --out runs/quick_test
 ```
 
-Outputs:
+### Output Files
+
+Each run produces:
 
 ```
-runs/<timestamp>/
-  frames/
-  master_video.mp4
-  events.json
-  run_metadata.json
+runs/test/
+├── scenario.yaml          # Configuration used
+├── run_metadata.json      # Execution metadata
+├── events.json            # Detected events
+├── telemetry.json         # Vehicle telemetry (SAE J670)
+├── telemetry.csv          # Tabular telemetry
+├── master_video.mp4       # Camera video
+├── run.log                # Execution log
+└── frames/                # Raw frames
 ```
 
-## Render 6 stimulus variants
+## Telemetry Data
 
+Vehicle state is recorded in SAE J670 coordinate system:
+
+- **X-axis**: Forward (positive = front of vehicle)
+- **Y-axis**: Left (positive = left side of vehicle)
+- **Z-axis**: Up (positive = top of vehicle)
+
+Recorded data includes:
+- Position (world coordinates)
+- Velocity (vx, vy, vz in m/s)
+- Acceleration (ax, ay, az in m/s^2)
+- Angular velocity (roll_rate, pitch_rate, yaw_rate in deg/s)
+- Control inputs (throttle, brake, steer)
+
+See [docs/api/telemetry_schema.md](docs/api/telemetry_schema.md) for full schema.
+
+## Scenarios
+
+| ID | Map | Target Event | Description |
+|----|-----|--------------|-------------|
+| highway_merge | Town04 | vehicle_cut_in | Vehicle merges into ego lane |
+| lane_change_cut_in | Town05 | vehicle_cut_in | Vehicle cuts in from adjacent lane |
+| pedestrian_emerge | Town05 | avoid_pedestrian | Pedestrian crosses from behind parked car |
+| unprotected_left_turn | Town03 | yield_left_turn | Left turn with oncoming traffic |
+| red_light_conflict | Town03 | stop_for_red_light | Approach to red traffic light |
+| yield_to_emergency | Town04 | yield_to_emergency | Emergency vehicle approaching from rear |
+
+Each scenario has detailed documentation in its README.md file.
+
+## Render Presets
+
+Use presets to balance quality vs. speed:
+
+```bash
+# Fast testing (10fps, 20s, 640x360)
+python run_scenario.py --scenario highway_merge --render-preset fast
+
+# Longer fast test (10fps, 20s)
+python run_scenario.py --scenario highway_merge --render-preset fast_long
+
+# Full quality (20fps, 30s, 1280x720)
+python run_scenario.py --scenario highway_merge --render-preset final
 ```
-./render_variants.py --run_dir runs/20250101_120000
+
+## Generate Experiment Variants
+
+```bash
+# Generate all 6 variants (V0/V1/V2 x R0/R1)
+python render_variants.py --run_dir runs/test
+
+# Generate only audio assets
+python render_variants.py --run_dir runs/test --audio-only
 ```
 
-Outputs:
+## Configuration
 
-```
-runs/<timestamp>/variants/voice{0|1|2}_robot{0|1}/
-  stimulus.mp4
-  events.json
-  narration.wav   # only for voice 1/2
-  robot_timeline.csv   # only for robot=1
-```
+### Client Config (configs/client.yaml)
 
-To avoid duplicating video files, generate only audio assets and a robot timeline:
-
-```
-./render_variants.py --run_dir runs/20250101_120000 --audio-only
-```
-
-Outputs:
-
-```
-runs/<timestamp>/
-  audio_assets/
-    what.wav
-    whatwhy.wav
-  robot_timeline.csv
-```
-
-## Debugging modules (step-by-step)
-
-```
-./debug_tools.py check_connection --client-config configs/client.yaml
-./debug_tools.py tick_sync --frames 50 --fixed-delta 0.05
-./debug_tools.py camera --out debug/camera --frames 30 --encode
-./debug_tools.py scenario --scenario configs/scenarios/highway_merge.yaml --frames 60
-./debug_tools.py events --scenario configs/scenarios/highway_merge.yaml --frames 120 --out debug/events.json
-./debug_tools.py audio --events debug/events.json --voice-level 2 --out debug/narration.wav
-./debug_tools.py variants --run-dir runs/20250101_120000
-```
-
-Use these commands to isolate issues by module (connection → sync tick → sensor → scenario → events → audio → variants).
-
-## Program architecture
-
-See `docs/architecture.md` for module responsibilities, interfaces, and data flow.
-
-## Client config
-
-Default client settings live in `configs/client.yaml`:
-
-```
+```yaml
 host: 192.168.31.32
 port: 2000
 tm_port: 8000
@@ -138,87 +172,38 @@ timeout: 10.0
 allow_version_mismatch: true
 ```
 
-You can override from CLI when needed:
+### Scenario Config
 
-```
-./run_scenario.py --scenario configs/scenarios/highway_merge.yaml --host 127.0.0.1
-./debug_tools.py check_connection --client-config configs/client.yaml --no-allow-version-mismatch
-```
+Each scenario has its own config files:
+- `config.yaml` - Short test version (~18s)
+- `config_30s.yaml` - Full experiment version (30s)
 
-## Scenario configs
+Parameters include map, weather, seed, FPS, camera settings, and scenario-specific triggers.
 
-Sample configs live in `configs/scenarios/`:
+## API Documentation
 
-- `highway_merge`
-- `lane_change_cut_in`
-- `unprotected_left_turn`
-- `red_light_conflict`
-- `yield_to_emergency`
-- `pedestrian_emerge`
-
-Each YAML supports:
-
-- `map`, `seed`, `duration`, `fps`, `fixed_delta_seconds`, `sync_mode`, `no_rendering_mode`
-- `weather` preset (e.g., `ClearNoon`, `CloudyNoon`, `WetNoon`)
-- `camera` settings (`width`, `height`, `fov`, `fps`, `preset`)
-- `scenario` parameters (trigger frames, steer values, etc.)
-
-If a `spawn_index` is invalid, the scenario will fall back to a random spawn point.
-
-## Render presets (quick vs final)
-
-Use render presets to switch between fast smoke tests and full-quality renders:
-
-```
-./run_scenario.py --scenario configs/scenarios/highway_merge_30s.yaml \
-  --render-preset fast
-
-./run_scenario.py --scenario configs/scenarios/highway_merge_30s.yaml \
-  --render-preset fast_long
-
-./run_scenario.py --scenario configs/scenarios/highway_merge_30s.yaml \
-  --render-preset final
-```
-
-Presets live in `configs/render_presets.yaml` and can override fps, duration,
-camera resolution, and background traffic. When fps/duration changes, frame-based
-scenario triggers are scaled automatically so events stay in the same relative
-time window.
-
-Recording starts after a short prewarm period (`prewarm_seconds`) to avoid initial
-spawn drop or jitter at frame 0.
-
-## events.json schema
-
-See `docs/events_schema.json` for the full schema.
-
-Example event:
-
-```
-{
-  "t": 5.2,
-  "type": "brake_hard",
-  "decision_text": "Brake hard",
-  "reason_text": "Obstacle or conflict ahead",
-  "robot_precue_t": 4.7
-}
-```
-
-## Robot timeline
-
-`robot_timeline.csv` includes two actions per event:
-
-- `blink`: robot light flash
-- `wiggle`: robot body wiggle
-
-Columns: `t_start,t_end,action,intensity,notes`
-
-Feed this timeline to your robot controller to trigger cues aligned to `robot_precue_t`.
+- [Output Formats](docs/api/output_formats.md) - File structure and descriptions
+- [Telemetry Schema](docs/api/telemetry_schema.md) - SAE J670 data format
+- [Events Schema](docs/api/events_schema.md) - Event detection format
+- [Coordinate Systems](docs/api/coordinate_systems.md) - Coordinate frame reference
 
 ## Troubleshooting
 
-- Version mismatch: client and server must match exactly (CARLA x.y.z).
-- If you must ignore mismatches (e.g., Windows/Linux build hash), set `allow_version_mismatch: true` in `configs/client.yaml`.
-- Port unreachable: confirm Windows firewall and IP connectivity.
-- Missing ffmpeg: install with `sudo apt-get install ffmpeg`.
-- TTS: install `edge-tts` for real speech, otherwise a short tone is generated.
+- **Version mismatch**: Set `allow_version_mismatch: true` in client.yaml
+- **Connection refused**: Check firewall and CARLA server status
+- **Missing ffmpeg**: `sudo apt-get install ffmpeg`
+- **No audio**: Install `pip install edge-tts` for TTS
+
+## Development
+
+```bash
+# Verify imports
+python -c "from carla_experiment_client.scenarios.registry import get_scenario_ids; print(get_scenario_ids())"
+
+# Check syntax
+python -m py_compile carla_experiment_client/run_scenario.py
+```
+
+## License
+
+Internal research project for HKUST(GZ).

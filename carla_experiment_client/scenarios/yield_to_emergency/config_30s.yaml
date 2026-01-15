@@ -1,0 +1,36 @@
+id: yield_to_emergency
+map: Town04
+doc: docs/scenarios/yield_to_emergency.md
+weather: ClearNoon
+seed: 15
+duration: 60.0
+fps: 20
+fixed_delta_seconds: 0.05
+sync_mode: true
+no_rendering_mode: false
+ego_vehicle: vehicle.tesla.model3
+camera:
+  width: 1280
+  height: 720
+  fov: 90
+  fps: 20
+  preset: driver
+events:
+  min_event_time_s: 30.0
+  voice_lead_time_s: 3.0
+  robot_precue_lead_s: 0.5
+scenario:
+  # Critical event at ~40s (frame 800 at 20fps)
+  # Emergency vehicle approaches rapidly from behind, ego must yield
+  # Timing: emergency starts 50m behind, boosts at 30s to catch up by ~40s
+  emergency_spawn_distance_m: 50.0   # Start 50m behind ego
+  emergency_speed_delta: -40.0       # 40% faster than limit
+  emergency_boost_start_frame: 600   # Boost at 30s (frame 600 at 20fps)
+  emergency_boost_frames: 200        # 10s boost period
+  emergency_throttle: 1.0            # Full throttle during boost
+  ego_speed_delta: 20.0              # Ego moderately slower (easier to catch)
+  ego_follow_distance_m: 15.0
+  background_vehicle_count: 6        # Minimal background
+  background_walker_count: 0         # No pedestrians on highway
+  background_min_distance_m: 60.0    # Keep background very far
+  prewarm_seconds: 1.0

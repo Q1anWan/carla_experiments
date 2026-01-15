@@ -1,0 +1,35 @@
+id: red_light_conflict
+map: Town03
+doc: docs/scenarios/red_light_conflict.md
+weather: ClearNoon
+seed: 33
+duration: 60.0
+fps: 20
+fixed_delta_seconds: 0.05
+sync_mode: true
+no_rendering_mode: false
+ego_vehicle: vehicle.tesla.model3
+camera:
+  width: 1280
+  height: 720
+  fov: 90
+  fps: 20
+  preset: driver
+events:
+  min_event_time_s: 30.0
+  voice_lead_time_s: 3.0
+  robot_precue_lead_s: 0.5
+scenario:
+  # Critical event at ~40s (frame 800 at 20fps)
+  # Ego approaches intersection, cross vehicle runs through creating conflict
+  # NOTE: This scenario relies on traffic light search - NOT using fixed spawn index
+  spawn_offset_m: 350.0              # Distance from intersection for 40s approach
+  cross_release_frame: 760           # Cross vehicle released at 38s
+  ego_speed_delta: -20.0             # Ego goes 20% FASTER than limit (negative = faster)
+  ego_follow_distance_m: 12.0
+  ego_ignore_lights_percentage: 0.0    # Respect all lights so ego stops at red
+  ego_ignore_vehicles_percentage: 0.0  # Still respect other vehicles
+  background_vehicle_count: 8        # Reduced to minimize noise
+  background_walker_count: 0         # No walkers to avoid interference
+  background_min_distance_m: 50.0    # Keep background far away
+  prewarm_seconds: 1.0

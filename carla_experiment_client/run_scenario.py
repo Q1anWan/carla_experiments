@@ -20,11 +20,51 @@ from .config import (
     load_scenario_config,
 )
 from .events.extractor import EventExtractor
-from .scenarios.registry import build_scenario
+from .scenarios.registry import build_scenario, get_scenario_config_path, get_scenario_ids
 from .sensors.camera_recorder import record_video
+from .telemetry import TelemetryRecorder
 from .utils import ensure_dir, utc_timestamp, write_json
 from .video import encode_frames_to_mp4
 from .weather import apply_weather
+
+
+def resolve_scenario_path(scenario_arg: str) -> Path:
+    """Resolve scenario argument to a config file path.
+
+    Args:
+        scenario_arg: Either a path to a YAML file, or a scenario ID.
+                      For scenario IDs, can append ":config" or ":config_30s" to select variant.
+                      Default variant is "config_30s".
+
+    Returns:
+        Path to the scenario config YAML file.
+
+    Raises:
+        FileNotFoundError: If the config file cannot be found.
+    """
+    # Check if it's a direct file path
+    direct_path = Path(scenario_arg)
+    if direct_path.suffix in (".yaml", ".yml") and direct_path.exists():
+        return direct_path
+
+    # Parse scenario ID and optional variant
+    if ":" in scenario_arg:
+        scenario_id, variant = scenario_arg.rsplit(":", 1)
+    else:
+        scenario_id = scenario_arg
+        variant = "config_30s"  # Default to full 30-second version
+
+    # Look up in registry
+    config_path = get_scenario_config_path(scenario_id, variant)
+    if config_path is not None:
+        return config_path
+
+    # Not found
+    available = ", ".join(get_scenario_ids())
+    raise FileNotFoundError(
+        f"Scenario config not found for '{scenario_arg}'. "
+        f"Available scenarios: {available}"
+    )
 
 
 def _attach_file_logger(out_dir: Path) -> None:
@@ -132,9 +172,19 @@ def run_scenario(
             min_event_time_s=config.min_event_time_s,
         )
 
+        # Initialize telemetry recorder (default enabled)
+        telemetry = TelemetryRecorder(
+            world=ctx.world,
+            ego_vehicle=scenario_ctx.ego_vehicle,
+            fps=config.fps,
+            tracked_actors=scenario_ctx.actors,
+        )
+        logging.info("Telemetry recording enabled (SAE J1100 coordinate system)")
+
         def on_tick(snapshot: carla.WorldSnapshot, _: carla.Image, index: int) -> None:
             scenario_ctx.on_tick(index)
             extractor.tick(snapshot, index)
+            telemetry.tick(snapshot, index)
 
         prewarm_seconds = config.params.get("prewarm_seconds")
         if prewarm_seconds is not None:
@@ -154,6 +204,17 @@ def run_scenario(
         events = extractor.finalize()
 
         write_json(out_dir / "events.json", {"events": events})
+
+        # Save telemetry data (JSON + CSV)
+        telemetry.save(out_dir)
+        telemetry_summary = telemetry.get_summary()
+        logging.info(
+            "Telemetry: %d frames, speed %.1f-%.1f m/s",
+            telemetry_summary.get("total_frames", 0),
+            telemetry_summary.get("speed", {}).get("min", 0),
+            telemetry_summary.get("speed", {}).get("max", 0),
+        )
+
         _write_metadata(
             out_dir,
             config,
@@ -182,7 +243,13 @@ def run_scenario(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run a CARLA scenario.")
-    parser.add_argument("--scenario", required=True, type=Path, help="Scenario YAML")
+    parser.add_argument(
+        "--scenario",
+        required=True,
+        type=str,
+        help="Scenario ID (e.g., 'highway_merge') or path to YAML config. "
+             "Use 'scenario_id:config' for short version, 'scenario_id:config_30s' for full version.",
+    )
     parser.add_argument("--out", type=Path, help="Output directory")
     parser.add_argument(
         "--client-config",
@@ -228,8 +295,9 @@ def main() -> int:
         allow_version_mismatch=args.allow_version_mismatch,
     )
 
+    scenario_path = resolve_scenario_path(args.scenario)
     return run_scenario(
-        args.scenario,
+        scenario_path,
         out_dir,
         host=client_config.host,
         port=client_config.port,

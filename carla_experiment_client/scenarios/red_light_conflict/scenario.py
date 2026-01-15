@@ -6,7 +6,7 @@ import random
 
 import carla
 
-from .base import (
+from ..base import (
     BaseScenario,
     ScenarioContext,
     find_spawn_point,

@@ -1,4 +1,5 @@
 presets:
+  # Quick test: 6s at 10fps, 640x360, scaled frames
   fast:
     fps: 10
     duration: 6.0
@@ -12,6 +13,7 @@ presets:
       fast_spawn: true
     scale_frames: true
     scale_min_event_time: true
+  # Extended test: 20s at 10fps, 640x360, scaled frames
   fast_long:
     fps: 10
     duration: 20.0
@@ -25,6 +27,20 @@ presets:
       fast_spawn: true
     scale_frames: true
     scale_min_event_time: true
+  # Full duration test: 10fps, 640x360, no duration override
+  # Use this to test full 60s scenarios with event triggers
+  test:
+    fps: 10
+    fixed_delta_seconds: 0.1
+    camera:
+      width: 640
+      height: 360
+    scenario_overrides:
+      background_vehicle_count: 8
+      background_walker_count: 0
+      fast_spawn: true  # Use random spawn for fast testing
+    scale_frames: true  # Scale trigger frames to match lower FPS
+  # Final production: 20fps, 1280x720
   final:
     fps: 20
     camera:

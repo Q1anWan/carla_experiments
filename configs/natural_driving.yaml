@@ -1,0 +1,66 @@
+# Natural Driving Behavior Configuration
+#
+# These parameters control how human-like the autonomous driving behavior appears.
+# Based on human factors research and ISO 2631-1 comfort guidelines.
+
+# Driving style presets
+# Choose from: relaxed, normal, assertive
+default_preset: normal
+
+# Custom configuration (overrides preset if specified)
+custom:
+  # Speed behavior
+  speed_delta_percent: 10.0  # Percentage slower than speed limit (human-like: 5-15%)
+  speed_variance_percent: 5.0  # Natural speed variation
+
+  # Following behavior (human time headway: 1.5-2.5s)
+  desired_headway_s: 1.8  # Target time headway in seconds
+  min_follow_distance_m: 5.0  # Minimum following distance in meters
+
+  # Comfort thresholds (ISO 2631-1 guidelines)
+  max_comfort_accel_mps2: 2.0  # Max comfortable acceleration (m/s²)
+  max_comfort_decel_mps2: 3.0  # Max comfortable deceleration (m/s²)
+  max_comfort_jerk_mps3: 1.5  # Max comfortable jerk (m/s³)
+
+  # Lane change behavior
+  lane_change_distance_m: 30.0  # Minimum distance for safe lane change
+  auto_lane_change: true  # Allow automatic lane changes
+
+  # Traffic light behavior
+  ignore_lights_percent: 0.0  # Compliance with traffic lights (0 = full compliance)
+  yellow_light_reaction: cautious  # Options: cautious, aggressive
+
+  # Intersection behavior
+  ignore_vehicles_percent: 0.0  # Safety margin at intersections
+
+  # Smoothing parameters (0-1, higher = more responsive, lower = smoother)
+  throttle_smoothing: 0.3
+  brake_smoothing: 0.4
+  steering_smoothing: 0.2
+
+# Scenario-specific overrides
+scenarios:
+  highway_merge:
+    speed_delta_percent: 5.0  # Faster on highway
+    desired_headway_s: 1.5
+    lane_change_distance_m: 25.0
+
+  lane_change_cut_in:
+    desired_headway_s: 2.0
+    max_comfort_decel_mps2: 3.5  # Allow slightly harder braking for cut-in
+
+  pedestrian_emerge:
+    max_comfort_decel_mps2: 4.0  # Emergency braking allowed
+    desired_headway_s: 2.5
+
+  yield_to_emergency:
+    speed_delta_percent: 20.0  # Slow down more
+    desired_headway_s: 3.0
+
+  unprotected_left_turn:
+    speed_delta_percent: 15.0
+    desired_headway_s: 2.2
+
+  red_light_conflict:
+    ignore_lights_percent: 0.0
+    max_comfort_decel_mps2: 3.5

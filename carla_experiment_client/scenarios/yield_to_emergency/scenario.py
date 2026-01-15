@@ -6,7 +6,7 @@ import random
 
 import carla
 
-from .base import (
+from ..base import (
     BaseScenario,
     ScenarioContext,
     _get_param_float,
@@ -54,7 +54,9 @@ class YieldToEmergencyScenario(BaseScenario):
         self._apply_ego_tm(tm, ego)
 
         emergency_distance = float(params.get("emergency_spawn_distance_m", 35.0))
-        emergency_spawn = offset_transform(ego_spawn, forward=-emergency_distance)
+        # Use positive forward to spawn BEHIND ego (offset_transform uses spawn orientation,
+        # which may face opposite to world direction on some maps/spawn points)
+        emergency_spawn = offset_transform(ego_spawn, forward=emergency_distance)
         try:
             emergency = self._spawn_vehicle(
                 world,

@@ -1,0 +1,47 @@
+id: lane_change_cut_in
+map: Town05
+doc: docs/scenarios/lane_change_cut_in.md
+weather: ClearNoon
+seed: 7
+duration: 60.0
+fps: 20
+fixed_delta_seconds: 0.05
+sync_mode: true
+no_rendering_mode: false
+ego_vehicle: vehicle.tesla.model3
+camera:
+  width: 1280
+  height: 720
+  fov: 90
+  fps: 20
+  preset: driver
+events:
+  min_event_time_s: 30.0
+  voice_lead_time_s: 3.0
+  robot_precue_lead_s: 0.5
+scenario:
+  # Critical event at ~40s (frame 800 at 20fps)
+  # Cut-in vehicle relocates to ego's right front, then cuts left into ego's lane
+  ego_spawn_index: 150               # Fixed spawn on Town05 multi-lane road
+  cut_in_trigger_frame: 800
+  cut_in_duration_frames: 80         # 4s cut-in maneuver
+  cut_in_throttle: 0.55
+  cut_in_steer: -0.28                # Steer left to cut into ego's lane
+  cut_in_relocate_on_trigger: true
+  cut_in_relocate_forward_m: 16.0    # Position in front-right of ego
+  cut_in_relocate_right_m: 4.8       # In right lane
+  prewarm_seconds: 1.0
+  # Lead vehicle creates natural car-following, but not too slow
+  lead_slow_distance_m: 60.0         # Further ahead to avoid constant braking
+  lead_slow_speed_delta: 15.0        # Lead only 15% slower than limit
+  ego_speed_delta: 10.0              # Ego slightly slower than limit
+  ego_follow_distance_m: 12.0
+  ego_ignore_lights_percentage: 100.0  # Ignore traffic lights for continuous driving
+  background_vehicle_count: 10       # Reduced to minimize noise events
+  background_walker_count: 0         # No walkers to avoid interference
+  background_min_distance_m: 45.0    # Keep background far away
+  nearby_vehicle_offsets:
+    - forward: 20.0
+      right: 4.5
+    - forward: -12.0
+      right: -4.5
