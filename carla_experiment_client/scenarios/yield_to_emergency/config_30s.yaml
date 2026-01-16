@@ -21,16 +21,29 @@ events:
   robot_precue_lead_s: 0.5
 scenario:
   # Critical event at ~40s
-  # Emergency vehicle approaches rapidly from behind, ego must yield
-  # Timing: emergency starts 25m behind for faster catch-up
-  emergency_spawn_distance_m: 25.0   # Start 25m behind ego (closer for detection)
-  emergency_speed_delta: -50.0       # 50% faster than limit (more aggressive)
-  emergency_boost_start_frame: 300   # Boost at 30s (works for both 10fps and 20fps)
-  emergency_boost_frames: 100        # 10s boost period at 10fps
+  # Emergency vehicle SPAWNS at ~35s behind ego, then rapidly catches up
+  # This ensures emergency is not visible at video start
+  emergency_spawn_frame: 700         # Spawn emergency at 35s (20fps)
+  emergency_spawn_distance_m: -50.0  # Spawn 50m BEHIND ego (negative = behind)
+  emergency_speed_delta: -60.0       # 60% faster than limit (very aggressive)
+  emergency_boost_start_frame: 700   # Immediately boost after spawn
+  emergency_boost_frames: 120        # 6s boost period at 20fps
   emergency_throttle: 1.0            # Full throttle during boost
-  ego_speed_delta: 30.0              # Ego slower (easier to catch)
-  ego_follow_distance_m: 15.0
-  background_vehicle_count: 6        # Minimal background
+  ego_speed_delta: 20.0              # Ego slower (easier to catch)
+  ego_follow_distance_m: 20.0        # Larger following distance
+  ego_auto_lane_change: false        # Disable auto lane change
+  # MORE traffic for realistic highway
+  background_vehicle_count: 20       # More background vehicles
   background_walker_count: 0         # No pedestrians on highway
-  background_min_distance_m: 60.0    # Keep background very far
+  background_min_distance_m: 40.0    # Allow closer vehicles
   prewarm_seconds: 1.0
+  # Nearby vehicles for traffic density
+  nearby_vehicle_offsets:
+    - forward: 40.0                  # Vehicle ahead
+      right: 0.0
+    - forward: 25.0                  # Vehicle in adjacent lane ahead
+      right: 4.0
+    - forward: -20.0                 # Vehicle behind ego
+      right: 0.0
+    - forward: -15.0                 # Vehicle in adjacent lane behind
+      right: 4.0

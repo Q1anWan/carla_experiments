@@ -158,18 +158,48 @@ class SAEJ670Transformer:
 
     This class maintains previous frame state to compute derivatives
     (acceleration, angular velocity) from position and velocity data.
+
+    Includes physically realistic clamping:
+    - Acceleration: ±12 m/s² (typical vehicle limit)
+    - Angular velocity: ±180 deg/s (reasonable for normal driving)
     """
+
+    # Physical limits for realistic data
+    MAX_ACCEL = 12.0  # m/s² (typical max for passenger vehicles)
+    MAX_ANGULAR_RATE = 180.0  # deg/s
 
     def __init__(self):
         self._prev_velocity: Optional[Any] = None  # carla.Vector3D
         self._prev_rotation: Optional[Any] = None  # carla.Rotation
         self._prev_transform: Optional[Any] = None  # carla.Transform
+        # Smoothing history for acceleration (reduces noise)
+        self._accel_history: list = []
+        self._accel_history_len = 3  # Moving average window
 
     def reset(self) -> None:
         """Reset state for new recording."""
         self._prev_velocity = None
         self._prev_rotation = None
         self._prev_transform = None
+        self._accel_history = []
+
+    def _clamp(self, value: float, limit: float) -> float:
+        """Clamp value to [-limit, limit] range."""
+        return max(-limit, min(limit, value))
+
+    def _smooth_accel(self, ax: float, ay: float, az: float) -> tuple:
+        """Apply moving average smoothing to acceleration."""
+        self._accel_history.append((ax, ay, az))
+        if len(self._accel_history) > self._accel_history_len:
+            self._accel_history.pop(0)
+
+        if len(self._accel_history) == 0:
+            return ax, ay, az
+
+        avg_ax = sum(a[0] for a in self._accel_history) / len(self._accel_history)
+        avg_ay = sum(a[1] for a in self._accel_history) / len(self._accel_history)
+        avg_az = sum(a[2] for a in self._accel_history) / len(self._accel_history)
+        return avg_ax, avg_ay, avg_az
 
     def compute_state(
         self,
@@ -223,6 +253,14 @@ class SAEJ670Transformer:
             # az: vertical acceleration
             az = dv_z / dt
 
+            # Apply smoothing to reduce noise
+            ax, ay, az = self._smooth_accel(ax, ay, az)
+
+            # Clamp to physically realistic limits
+            ax = self._clamp(ax, self.MAX_ACCEL)
+            ay = self._clamp(ay, self.MAX_ACCEL)
+            az = self._clamp(az, self.MAX_ACCEL)
+
         # Compute angular velocity from rotation change
         roll_rate, pitch_rate, yaw_rate = 0.0, 0.0, 0.0
         if self._prev_rotation is not None and dt > 1e-6:
@@ -234,6 +272,11 @@ class SAEJ670Transformer:
             roll_rate = d_roll / dt
             pitch_rate = d_pitch / dt
             yaw_rate = d_yaw / dt
+
+            # Clamp angular rates to realistic limits
+            roll_rate = self._clamp(roll_rate, self.MAX_ANGULAR_RATE)
+            pitch_rate = self._clamp(pitch_rate, self.MAX_ANGULAR_RATE)
+            yaw_rate = self._clamp(yaw_rate, self.MAX_ANGULAR_RATE)
 
         # Store current state for next iteration
         self._prev_velocity = velocity

@@ -295,14 +295,14 @@ class BaseScenario:
         """Apply Traffic Manager configuration to ego vehicle.
 
         Uses natural driving defaults if specific parameters are not provided,
-        ensuring more human-like behavior.
+        ensuring more human-like behavior with reduced oscillation.
         """
         params = self.config.params
 
-        # Natural driving defaults (more human-like)
+        # Natural driving defaults (more human-like, reduced oscillation)
         # Based on human factors research for comfortable driving
         default_speed_delta = 10.0  # Slightly slower than limit (human: 5-15% under)
-        default_follow_distance = 8.0  # Comfortable following distance (human: 1.5-2.5s headway)
+        default_follow_distance = 12.0  # Increased for smoother following (reduces oscillation)
         default_ignore_lights = 0.0  # Full compliance with traffic lights
         default_ignore_vehicles = 0.0  # Full respect for other vehicles
         default_auto_lane_change = True
@@ -316,6 +316,18 @@ class BaseScenario:
             ignore_vehicles=_get_param_float(params, "ego_ignore_vehicles_percentage") or default_ignore_vehicles,
             auto_lane_change=_get_param_bool(params, "ego_auto_lane_change") if "ego_auto_lane_change" in params else default_auto_lane_change,
         )
+
+    def _configure_tm_global(self, tm: carla.TrafficManager) -> None:
+        """Configure global Traffic Manager settings for smoother driving.
+
+        Call this once during scenario setup to reduce oscillation across all vehicles.
+        """
+        try:
+            # Set global parameters for smoother driving
+            tm.set_global_distance_to_leading_vehicle(4.0)  # Increased base distance
+            tm.set_synchronous_mode(True)
+        except (AttributeError, RuntimeError) as e:
+            logging.warning("TM global config failed: %s", e)
 
 
 def pick_spawn_point(spawn_points: Iterable[carla.Transform], rng: random.Random) -> carla.Transform:

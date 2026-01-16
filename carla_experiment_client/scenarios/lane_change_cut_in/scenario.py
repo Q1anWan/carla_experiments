@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import random
 
 import carla
@@ -76,7 +77,27 @@ class LaneChangeCutInScenario(BaseScenario):
                 log_spawn(vehicle, f"nearby_vehicle_{index}")
                 nearby_vehicles.append(vehicle)
 
-        cut_in_spawn = offset_transform(ego_spawn, forward=12.0, right=3.5)
+        # Use waypoint navigation to find valid adjacent lane position
+        cut_in_ahead_m = float(params.get("cut_in_ahead_m", 12.0))
+        ego_wp = world.get_map().get_waypoint(ego_spawn.location)
+
+        # Find adjacent lane using waypoint navigation
+        adjacent_wp = ego_wp.get_right_lane() or ego_wp.get_left_lane()
+        if adjacent_wp and adjacent_wp.lane_type == carla.LaneType.Driving:
+            # Navigate ahead in adjacent lane
+            ahead_wps = adjacent_wp.next(cut_in_ahead_m)
+            if ahead_wps:
+                cut_in_spawn = ahead_wps[0].transform
+                cut_in_spawn.location.z += 0.3
+            else:
+                cut_in_spawn = adjacent_wp.transform
+                cut_in_spawn.location.z += 0.3
+            # Determine steer direction based on which side
+            cut_in_on_right = (adjacent_wp == ego_wp.get_right_lane())
+        else:
+            cut_in_spawn = offset_transform(ego_spawn, forward=cut_in_ahead_m, right=3.5)
+            cut_in_on_right = True
+
         cutter = self._spawn_vehicle(
             world,
             tm,
@@ -87,6 +108,14 @@ class LaneChangeCutInScenario(BaseScenario):
             autopilot=True,
         )
         log_spawn(cutter, "cut_in_vehicle")
+
+        # Validate cut-in vehicle distance
+        cutter_dist = ego_spawn.location.distance(cutter.get_location())
+        if cutter_dist > 50.0:
+            logging.warning(
+                "Cut-in vehicle spawned far from ego (%.1fm). Scenario may not work as expected.",
+                cutter_dist
+            )
 
         lead_distance = float(params.get("lead_slow_distance_m", 25.0))
         lead_speed_delta = float(params.get("lead_slow_speed_delta", 35.0))
@@ -136,10 +165,16 @@ class LaneChangeCutInScenario(BaseScenario):
         start_frame = int(params.get("cut_in_trigger_frame", self.config.fps * 2))
         duration_frames = int(params.get("cut_in_duration_frames", self.config.fps))
         throttle = float(params.get("cut_in_throttle", 0.55))
-        steer = float(params.get("cut_in_steer", -0.22))
+        base_steer = float(params.get("cut_in_steer", -0.22))
         relocate_on_trigger = bool(params.get("cut_in_relocate_on_trigger", False))
         relocate_forward = float(params.get("cut_in_relocate_forward_m", 8.0))
         relocate_right = float(params.get("cut_in_relocate_right_m", 3.5))
+
+        # Determine steer direction: steer left (negative) if on right, right (positive) if on left
+        if cut_in_on_right:
+            steer = -abs(base_steer)  # Steer left to cut into ego's lane
+        else:
+            steer = abs(base_steer)   # Steer right to cut into ego's lane
 
         def cut_in(frame: int) -> None:
             if frame == start_frame:
@@ -150,10 +185,12 @@ class LaneChangeCutInScenario(BaseScenario):
                     )
                     cutter.set_transform(relocate_transform)
                 cutter.set_autopilot(False)
+                logging.info("Cut-in maneuver started at frame %d, steer=%.2f", frame, steer)
             if start_frame <= frame < start_frame + duration_frames:
                 cutter.apply_control(carla.VehicleControl(throttle=throttle, steer=steer))
             if frame == start_frame + duration_frames:
                 cutter.set_autopilot(True, tm.get_port())
+                logging.info("Cut-in maneuver completed at frame %d", frame)
 
         ctx.tick_callbacks.append(cut_in)
         self._maybe_add_ego_brake(ctx, tm)

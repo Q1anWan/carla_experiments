@@ -21,16 +21,33 @@ events:
   robot_precue_lead_s: 0.5
 scenario:
   # Critical event at ~40s (frame 800 at 20fps)
-  # Ego approaches intersection, begins left turn, must yield to oncoming traffic
-  approach_frames: 780               # Ego drives on autopilot until 39s
-  turn_frames: 100                   # 5s turn maneuver
-  ego_throttle: 0.40                 # Moderate throttle during approach
-  turn_throttle: 0.25                # Slower during turn
-  turn_steer: -0.30                  # Left turn
+  # Ego approaches intersection with left turn, uses manual steering
+  # Oncoming vehicles create conflict - ego must yield
+  use_autopilot_turn: false          # Use manual steering for reliable turn
+  turn_route_index: 0                # Force left turn at junction (0=left)
+  approach_frames: 780               # Ego drives on autopilot until 39s (scaled by fps)
+  turn_frames: 100                   # 5s turn maneuver at 20fps
+  ego_throttle: 0.35                 # Lower throttle for smoother approach
+  turn_throttle: 0.18                # Very slow during turn
+  turn_steer: -0.20                  # Very gentle left turn (if manual)
   turn_steer_auto: true              # Auto-detect turn direction
-  ego_speed_delta: 10.0              # Ego at moderate speed
-  ego_follow_distance_m: 10.0
-  background_vehicle_count: 12       # Reduced to minimize noise
-  background_walker_count: 4
-  background_min_distance_m: 40.0    # Keep background away
+  ego_speed_delta: 10.0              # Moderate speed
+  ego_follow_distance_m: 20.0        # Large following distance
+  ego_auto_lane_change: false        # Disable auto lane change
+  # Multiple oncoming vehicles for realistic conflict
+  oncoming_vehicle_count: 3          # 3 oncoming vehicles
+  oncoming_spawn_distance_m: 50.0    # Start 50m from ego
+  oncoming_vehicle_spacing_m: 8.0    # Spacing between oncoming vehicles
+  # MORE traffic for realistic city scene
+  background_vehicle_count: 20       # More background vehicles
+  background_walker_count: 5         # More pedestrians at intersection
+  background_min_distance_m: 30.0    # Allow closer vehicles
   prewarm_seconds: 1.0
+  # Nearby vehicles for traffic density
+  nearby_vehicle_offsets:
+    - forward: 40.0                  # Vehicle ahead
+      right: 0.0
+    - forward: -15.0                 # Vehicle behind ego
+      right: 0.0
+    - forward: 30.0                  # Vehicle in adjacent lane
+      right: 4.0

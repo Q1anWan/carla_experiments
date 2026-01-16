@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import random
 
 import carla
@@ -53,66 +54,58 @@ class YieldToEmergencyScenario(BaseScenario):
         log_spawn(ego, "ego")
         self._apply_ego_tm(tm, ego)
 
-        emergency_distance = float(params.get("emergency_spawn_distance_m", 35.0))
-        # Use positive forward to spawn BEHIND ego (offset_transform uses spawn orientation,
-        # which may face opposite to world direction on some maps/spawn points)
-        emergency_spawn = offset_transform(ego_spawn, forward=emergency_distance)
-        try:
-            emergency = self._spawn_vehicle(
-                world,
-                tm,
-                rng,
-                blueprint_filter="vehicle.ford.ambulance",
-                transform=emergency_spawn,
-                role_name="emergency",
-                autopilot=True,
-            )
-        except RuntimeError:
-            emergency = self._spawn_vehicle(
-                world,
-                tm,
-                rng,
-                blueprint_filter="vehicle.*",
-                transform=emergency_spawn,
-                role_name="emergency",
-                autopilot=True,
-            )
-        log_spawn(emergency, "emergency")
+        # Emergency vehicle parameters - may spawn later
+        emergency_spawn_frame = params.get("emergency_spawn_frame")
+        emergency_distance = float(params.get("emergency_spawn_distance_m", -50.0))
+        emergency_speed_delta = _get_param_float(params, "emergency_speed_delta")
+        emergency_follow_distance = _get_param_float(params, "emergency_follow_distance_m")
 
-        try:
-            lights = carla.VehicleLightState(
-                carla.VehicleLightState.Special1 | carla.VehicleLightState.Special2
-            )
-            emergency.set_light_state(lights)
-        except (RuntimeError, TypeError, AttributeError):
-            pass
-        self._configure_vehicle_tm(
-            tm,
-            emergency,
-            speed_delta=_get_param_float(params, "emergency_speed_delta"),
-            follow_distance=_get_param_float(params, "emergency_follow_distance_m"),
-        )
+        # State for delayed emergency spawn
+        emergency_state = {"vehicle": None, "spawned": False}
+
+        # Spawn nearby vehicles for traffic density
+        nearby_vehicles: list[carla.Actor] = []
+        nearby_offsets = params.get("nearby_vehicle_offsets") or []
+        if isinstance(nearby_offsets, list):
+            for index, offset in enumerate(nearby_offsets):
+                if not isinstance(offset, dict):
+                    continue
+                forward = float(offset.get("forward", 0.0))
+                right = float(offset.get("right", 0.0))
+                transform = offset_transform(ego_spawn, forward=forward, right=right)
+                try:
+                    vehicle = self._spawn_vehicle(
+                        world,
+                        tm,
+                        rng,
+                        blueprint_filter="vehicle.*",
+                        transform=transform,
+                        role_name=f"nearby_vehicle_{index}",
+                        autopilot=True,
+                    )
+                    log_spawn(vehicle, f"nearby_vehicle_{index}")
+                    nearby_vehicles.append(vehicle)
+                except RuntimeError:
+                    logging.warning("Failed to spawn nearby vehicle %d", index)
 
         background_vehicle_count = int(params.get("background_vehicle_count", 20))
         background_walker_count = int(params.get("background_walker_count", 10))
         background_min_distance = float(params.get("background_min_distance_m", 20.0))
+        exclude_locs = [ego_spawn.location] + [v.get_location() for v in nearby_vehicles]
         background = self._spawn_background_traffic(
             world,
             tm,
             rng,
             vehicle_count=background_vehicle_count,
             walker_count=background_walker_count,
-            exclude_locations=[
-                ego_spawn.location,
-                emergency_spawn.location,
-            ],
+            exclude_locations=exclude_locs,
             min_distance=background_min_distance,
         )
 
         ctx = ScenarioContext(
             world=world,
             ego_vehicle=ego,
-            actors=[ego, emergency] + background,
+            actors=[ego] + nearby_vehicles + background,
             camera_config=self.config.camera,
             fps=self.config.fps,
             duration=self.config.duration,
@@ -120,20 +113,94 @@ class YieldToEmergencyScenario(BaseScenario):
             seed=self.config.seed,
             scenario_id=self.config.scenario_id,
         )
-        ctx.tag_actor("emergency", emergency)
 
         boost_start = int(params.get("emergency_boost_start_frame", 0))
         boost_frames = int(params.get("emergency_boost_frames", self.config.fps * 2))
         throttle = float(params.get("emergency_throttle", 0.85))
+        spawn_frame = int(emergency_spawn_frame) if emergency_spawn_frame else 0
 
-        def boost_emergency(frame: int) -> None:
-            if frame == boost_start:
+        def spawn_and_control_emergency(frame: int) -> None:
+            # Delayed spawn of emergency vehicle
+            if frame == spawn_frame and not emergency_state["spawned"]:
+                # Spawn emergency behind ego's CURRENT position using waypoint navigation
+                ego_transform = ego.get_transform()
+                ego_wp = world.get_map().get_waypoint(ego_transform.location)
+
+                # Use waypoint.previous() to find valid road position behind ego
+                distance_behind = abs(emergency_distance)  # Convert to positive
+                prev_wps = ego_wp.previous(distance_behind)
+                if prev_wps:
+                    emergency_spawn = prev_wps[0].transform
+                    emergency_spawn.location.z += 0.3  # Ensure above ground
+                else:
+                    # Fallback to offset_transform if waypoint nav fails
+                    emergency_spawn = offset_transform(ego_transform, forward=emergency_distance)
+
+                try:
+                    emergency = self._spawn_vehicle(
+                        world,
+                        tm,
+                        rng,
+                        blueprint_filter="vehicle.ford.ambulance",
+                        transform=emergency_spawn,
+                        role_name="emergency",
+                        autopilot=True,
+                    )
+                except RuntimeError:
+                    emergency = self._spawn_vehicle(
+                        world,
+                        tm,
+                        rng,
+                        blueprint_filter="vehicle.*",
+                        transform=emergency_spawn,
+                        role_name="emergency",
+                        autopilot=True,
+                    )
+                log_spawn(emergency, "emergency")
+
+                # Validate emergency vehicle is within reasonable distance
+                actual_dist = ego_transform.location.distance(emergency.get_location())
+                if actual_dist > 100.0:
+                    logging.warning(
+                        "Emergency spawned far from ego (%.1fm vs intended %.1fm)",
+                        actual_dist, distance_behind
+                    )
+
+                # Set emergency lights
+                try:
+                    lights = carla.VehicleLightState(
+                        carla.VehicleLightState.Special1 | carla.VehicleLightState.Special2
+                    )
+                    emergency.set_light_state(lights)
+                except (RuntimeError, TypeError, AttributeError):
+                    pass
+
+                # Configure TM for emergency
+                self._configure_vehicle_tm(
+                    tm,
+                    emergency,
+                    speed_delta=emergency_speed_delta,
+                    follow_distance=emergency_follow_distance,
+                )
+
+                emergency_state["vehicle"] = emergency
+                emergency_state["spawned"] = True
+                ctx.tag_actor("emergency", emergency)
+                ctx.actors.append(emergency)
+                logging.info("Emergency vehicle spawned at frame %d", frame)
+
+            # Boost emergency after spawn
+            emergency = emergency_state["vehicle"]
+            if emergency is None:
+                return
+
+            if frame == boost_start and emergency_state["spawned"]:
                 emergency.set_autopilot(False)
-            if boost_start <= frame < boost_start + boost_frames:
+            if boost_start <= frame < boost_start + boost_frames and emergency_state["spawned"]:
                 emergency.apply_control(carla.VehicleControl(throttle=throttle))
-            if frame == boost_start + boost_frames:
+            if frame == boost_start + boost_frames and emergency_state["spawned"]:
                 emergency.set_autopilot(True, tm.get_port())
 
-        ctx.tick_callbacks.append(boost_emergency)
+        ctx.tick_callbacks.append(spawn_and_control_emergency)
         self._maybe_add_ego_brake(ctx, tm)
         return ctx

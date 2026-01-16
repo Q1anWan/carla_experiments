@@ -21,27 +21,35 @@ events:
   robot_precue_lead_s: 0.5
 scenario:
   # Critical event at ~40s (frame 800 at 20fps)
-  # Cut-in vehicle relocates to ego's right front, then cuts left into ego's lane
+  # Cut-in vehicle drives in adjacent lane and naturally cuts into ego's lane
+  # NO relocate - cut-in vehicle visible from beginning for realistic approach
   ego_spawn_index: 150               # Fixed spawn on Town05 multi-lane road
   cut_in_trigger_frame: 800
-  cut_in_duration_frames: 80         # 4s cut-in maneuver
-  cut_in_throttle: 0.55
-  cut_in_steer: -0.28                # Steer left to cut into ego's lane
-  cut_in_relocate_on_trigger: true
-  cut_in_relocate_forward_m: 16.0    # Position in front-right of ego
-  cut_in_relocate_right_m: 4.8       # In right lane
+  cut_in_duration_frames: 100        # 5s cut-in maneuver (smoother)
+  cut_in_throttle: 0.60              # Moderate throttle during cut-in
+  cut_in_steer: -0.25                # Gentle steer left to cut into ego's lane
+  cut_in_relocate_on_trigger: false  # DISABLED - no sudden teleport
+  cut_in_relocate_forward_m: 16.0    # (unused when relocate disabled)
+  cut_in_relocate_right_m: 4.8       # (unused when relocate disabled)
   prewarm_seconds: 1.0
-  # Lead vehicle creates natural car-following, but not too slow
-  lead_slow_distance_m: 60.0         # Further ahead to avoid constant braking
-  lead_slow_speed_delta: 15.0        # Lead only 15% slower than limit
-  ego_speed_delta: 10.0              # Ego slightly slower than limit
-  ego_follow_distance_m: 12.0
+  # Lead vehicle creates natural car-following - far enough to avoid constant braking
+  lead_slow_distance_m: 100.0        # Much further ahead - no constant braking
+  lead_slow_speed_delta: 8.0         # Lead only slightly slower (8% under limit)
+  ego_speed_delta: 5.0               # Ego closer to speed limit
+  ego_follow_distance_m: 20.0        # Large following distance
+  ego_auto_lane_change: false        # Disable auto lane change (reduces oscillation)
   ego_ignore_lights_percentage: 100.0  # Ignore traffic lights for continuous driving
-  background_vehicle_count: 10       # Reduced to minimize noise events
+  # MORE traffic for realistic city roads
+  background_vehicle_count: 20       # More vehicles for realism
   background_walker_count: 0         # No walkers to avoid interference
-  background_min_distance_m: 45.0    # Keep background far away
+  background_min_distance_m: 30.0    # Allow closer background vehicles
+  # Nearby vehicles for traffic density
   nearby_vehicle_offsets:
-    - forward: 20.0
+    - forward: 25.0                  # Vehicle ahead in adjacent lane
       right: 4.5
-    - forward: -12.0
-      right: -4.5
+    - forward: -15.0                 # Vehicle behind in adjacent lane
+      right: 4.5
+    - forward: 40.0                  # Vehicle far ahead in ego lane
+      right: 0.0
+    - forward: -20.0                 # Vehicle behind ego
+      right: 0.0

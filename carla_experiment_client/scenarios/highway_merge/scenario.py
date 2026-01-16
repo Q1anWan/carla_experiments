@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import random
 
 import carla
@@ -65,24 +66,39 @@ class HighwayMergeScenario(BaseScenario):
                 forward = float(offset.get("forward", 0.0))
                 right = float(offset.get("right", 0.0))
                 transform = offset_transform(ego_spawn, forward=forward, right=right)
-                vehicle = self._spawn_vehicle(
-                    world,
-                    tm,
-                    rng,
-                    blueprint_filter="vehicle.*",
-                    transform=transform,
-                    role_name=f"nearby_vehicle_{index}",
-                    autopilot=True,
-                )
-                log_spawn(vehicle, f"nearby_vehicle_{index}")
-                nearby_vehicles.append(vehicle)
+                try:
+                    vehicle = self._spawn_vehicle(
+                        world,
+                        tm,
+                        rng,
+                        blueprint_filter="vehicle.*",
+                        transform=transform,
+                        role_name=f"nearby_vehicle_{index}",
+                        autopilot=True,
+                    )
+                    log_spawn(vehicle, f"nearby_vehicle_{index}")
+                    nearby_vehicles.append(vehicle)
+                except RuntimeError:
+                    logging.warning("Failed to spawn nearby vehicle %d", index)
 
+        # Find adjacent lane for merge vehicle using waypoint navigation
         waypoint = world.get_map().get_waypoint(ego_spawn.location)
         merge_wp = waypoint.get_right_lane() or waypoint.get_left_lane()
+
+        # Position merge vehicle ahead in adjacent lane for natural approach
+        merge_ahead_m = float(params.get("merge_vehicle_ahead_m", 8.0))
         if merge_wp:
-            merge_spawn = merge_wp.transform
+            # Use waypoint navigation to find valid position ahead
+            next_wps = merge_wp.next(merge_ahead_m)
+            if next_wps:
+                merge_spawn = next_wps[0].transform
+                merge_spawn.location.z += 0.3  # Ensure above ground
+            else:
+                merge_spawn = merge_wp.transform
+                merge_spawn.location.z += 0.3
         else:
-            merge_spawn = offset_transform(ego_spawn, right=3.5, forward=-5.0)
+            merge_spawn = offset_transform(ego_spawn, right=3.5, forward=merge_ahead_m)
+
         merge_vehicle = self._spawn_vehicle(
             world,
             tm,
@@ -93,6 +109,14 @@ class HighwayMergeScenario(BaseScenario):
             autopilot=True,
         )
         log_spawn(merge_vehicle, "merge_vehicle")
+
+        # Validate merge vehicle is within reasonable distance
+        merge_dist = ego_spawn.location.distance(merge_vehicle.get_location())
+        if merge_dist > 50.0:
+            logging.warning(
+                "Merge vehicle spawned far from ego (%.1fm). Scenario may not work as expected.",
+                merge_dist
+            )
 
         lead_distance = float(params.get("lead_slow_distance_m", 35.0))
         lead_speed_delta = float(params.get("lead_slow_speed_delta", 30.0))
@@ -166,12 +190,19 @@ class HighwayMergeScenario(BaseScenario):
                     )
                     merge_vehicle.set_transform(relocate_transform)
                 merge_vehicle.set_autopilot(False)
+                # Log merge start with vehicle positions
+                merge_loc = merge_vehicle.get_location()
+                ego_loc = ego.get_location()
+                dist = merge_loc.distance(ego_loc)
+                logging.info("Merge maneuver started at frame %d, steer=%.2f, distance=%.1fm",
+                             frame, steer, dist)
             if start_frame <= frame < start_frame + duration_frames:
                 merge_vehicle.apply_control(
                     carla.VehicleControl(throttle=throttle, steer=steer)
                 )
             if frame == start_frame + duration_frames:
                 merge_vehicle.set_autopilot(True, tm.get_port())
+                logging.info("Merge maneuver completed at frame %d", frame)
 
         ctx.tick_callbacks.append(merge_trigger)
         self._maybe_add_ego_brake(ctx, tm)
