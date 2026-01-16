@@ -24,19 +24,21 @@ scenario:
   # NEW DESIGN: Ego approaches on GREEN, then light turns RED creating conflict
   # Phase 1 (0-35s): Light is GREEN, ego approaches intersection
   # Phase 2 (35s+): Light turns RED, MULTIPLE cross vehicles released
-  spawn_offset_m: 400.0              # Distance for ~35s approach at moderate speed
-  red_light_frame: 700               # Light turns RED at 35s (20fps)
-  cross_release_frame: 740           # Cross vehicles released 2s after red light
+  ego_spawn_index: 165               # Fixed spawn near signalized intersection (Town03)
+  cross_spawn_index: 10              # Cross traffic spawn near same junction
+  spawn_offset_m: 300.0              # Fallback distance for ~30s approach at moderate speed
+  red_light_frame: 600               # Light turns RED at 30s (20fps)
+  cross_release_frame: 640           # Cross vehicles released 2s after red light
   ego_speed_delta: -10.0             # Ego slightly faster than limit
   ego_follow_distance_m: 15.0        # Comfortable following distance
   ego_ignore_lights_percentage: 0.0  # Respect lights (will stop at red)
   ego_ignore_vehicles_percentage: 0.0
   # MULTIPLE cross traffic vehicles for realistic conflict
-  cross_vehicle_count: 4             # 4 cross vehicles at intersection
+  cross_vehicle_count: 2             # Reduced cross vehicles for stability
   cross_vehicle_spacing_m: 6.0       # Spacing between cross vehicles
   # MORE traffic for realistic city scene
-  background_vehicle_count: 20       # More background vehicles
-  background_walker_count: 5         # Some pedestrians
+  background_vehicle_count: 12       # Reduce background vehicles for stability
+  background_walker_count: 0         # Disable background walkers for stability
   background_min_distance_m: 40.0    # Allow closer vehicles
   prewarm_seconds: 1.0
   # Nearby vehicles for traffic density (waiting at ego's side of intersection)

@@ -132,7 +132,7 @@ class UnprotectedLeftTurnScenario(BaseScenario):
             role_name="ego",
             autopilot=True,
         )
-        log_spawn(ego, "ego")
+        log_spawn(ego, "ego", ego_spawn)
         self._apply_ego_tm(tm, ego)
 
         # Spawn multiple oncoming vehicles for conflict
@@ -169,7 +169,7 @@ class UnprotectedLeftTurnScenario(BaseScenario):
                     role_name=f"oncoming_vehicle_{i}",
                     autopilot=True,
                 )
-                log_spawn(oncoming, f"oncoming_vehicle_{i}")
+                log_spawn(oncoming, f"oncoming_vehicle_{i}", oncoming_spawn)
                 oncoming_vehicles.append(oncoming)
             except RuntimeError:
                 logging.warning("Failed to spawn oncoming vehicle %d", i)
@@ -194,7 +194,7 @@ class UnprotectedLeftTurnScenario(BaseScenario):
                         role_name=f"nearby_vehicle_{index}",
                         autopilot=True,
                     )
-                    log_spawn(vehicle, f"nearby_vehicle_{index}")
+                    log_spawn(vehicle, f"nearby_vehicle_{index}", transform)
                     nearby_vehicles.append(vehicle)
                 except RuntimeError:
                     logging.warning("Failed to spawn nearby vehicle %d", index)

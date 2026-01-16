@@ -51,7 +51,7 @@ class HighwayMergeScenario(BaseScenario):
             role_name="ego",
             autopilot=True,
         )
-        log_spawn(ego, "ego")
+        log_spawn(ego, "ego", ego_spawn)
         self._apply_ego_tm(tm, ego)
 
         nearby_vehicles: list[carla.Actor] = []
@@ -76,14 +76,21 @@ class HighwayMergeScenario(BaseScenario):
                         role_name=f"nearby_vehicle_{index}",
                         autopilot=True,
                     )
-                    log_spawn(vehicle, f"nearby_vehicle_{index}")
+                    log_spawn(vehicle, f"nearby_vehicle_{index}", transform)
                     nearby_vehicles.append(vehicle)
                 except RuntimeError:
                     logging.warning("Failed to spawn nearby vehicle %d", index)
 
-        # Find adjacent lane for merge vehicle using waypoint navigation
+        # Find adjacent driving lane for merge vehicle using waypoint navigation
         waypoint = world.get_map().get_waypoint(ego_spawn.location)
-        merge_wp = waypoint.get_right_lane() or waypoint.get_left_lane()
+        merge_wp = None
+        right_wp = waypoint.get_right_lane()
+        if right_wp and right_wp.lane_type == carla.LaneType.Driving:
+            merge_wp = right_wp
+        else:
+            left_wp = waypoint.get_left_lane()
+            if left_wp and left_wp.lane_type == carla.LaneType.Driving:
+                merge_wp = left_wp
 
         # Position merge vehicle ahead in adjacent lane for natural approach
         merge_ahead_m = float(params.get("merge_vehicle_ahead_m", 8.0))
@@ -108,10 +115,13 @@ class HighwayMergeScenario(BaseScenario):
             role_name="merge_vehicle",
             autopilot=True,
         )
-        log_spawn(merge_vehicle, "merge_vehicle")
+        log_spawn(merge_vehicle, "merge_vehicle", merge_spawn)
 
         # Validate merge vehicle is within reasonable distance
-        merge_dist = ego_spawn.location.distance(merge_vehicle.get_location())
+        merge_loc = merge_vehicle.get_location()
+        if abs(merge_loc.x) < 0.1 and abs(merge_loc.y) < 0.1 and abs(merge_loc.z) < 0.1:
+            merge_loc = merge_spawn.location
+        merge_dist = ego_spawn.location.distance(merge_loc)
         if merge_dist > 50.0:
             logging.warning(
                 "Merge vehicle spawned far from ego (%.1fm). Scenario may not work as expected.",
@@ -120,7 +130,13 @@ class HighwayMergeScenario(BaseScenario):
 
         lead_distance = float(params.get("lead_slow_distance_m", 35.0))
         lead_speed_delta = float(params.get("lead_slow_speed_delta", 30.0))
-        lead_spawn = offset_transform(ego_spawn, forward=lead_distance)
+        lead_spawn = None
+        lead_wp_candidates = waypoint.next(lead_distance)
+        if lead_wp_candidates:
+            lead_spawn = lead_wp_candidates[0].transform
+            lead_spawn.location.z += 0.3
+        else:
+            lead_spawn = offset_transform(ego_spawn, forward=lead_distance)
         lead_vehicle = self._spawn_vehicle(
             world,
             tm,
@@ -131,7 +147,7 @@ class HighwayMergeScenario(BaseScenario):
             autopilot=True,
         )
         tm.vehicle_percentage_speed_difference(lead_vehicle, lead_speed_delta)
-        log_spawn(lead_vehicle, "lead_slow")
+        log_spawn(lead_vehicle, "lead_slow", lead_spawn)
 
         background_vehicle_count = int(params.get("background_vehicle_count", 18))
         background_walker_count = int(params.get("background_walker_count", 10))

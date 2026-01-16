@@ -51,7 +51,7 @@ class YieldToEmergencyScenario(BaseScenario):
             role_name="ego",
             autopilot=True,
         )
-        log_spawn(ego, "ego")
+        log_spawn(ego, "ego", ego_spawn)
         self._apply_ego_tm(tm, ego)
 
         # Emergency vehicle parameters - may spawn later
@@ -83,7 +83,7 @@ class YieldToEmergencyScenario(BaseScenario):
                         role_name=f"nearby_vehicle_{index}",
                         autopilot=True,
                     )
-                    log_spawn(vehicle, f"nearby_vehicle_{index}")
+                    log_spawn(vehicle, f"nearby_vehicle_{index}", transform)
                     nearby_vehicles.append(vehicle)
                 except RuntimeError:
                     logging.warning("Failed to spawn nearby vehicle %d", index)
@@ -156,10 +156,13 @@ class YieldToEmergencyScenario(BaseScenario):
                         role_name="emergency",
                         autopilot=True,
                     )
-                log_spawn(emergency, "emergency")
+                log_spawn(emergency, "emergency", emergency_spawn)
 
                 # Validate emergency vehicle is within reasonable distance
-                actual_dist = ego_transform.location.distance(emergency.get_location())
+                emergency_loc = emergency.get_location()
+                if abs(emergency_loc.x) < 0.1 and abs(emergency_loc.y) < 0.1 and abs(emergency_loc.z) < 0.1:
+                    emergency_loc = emergency_spawn.location
+                actual_dist = ego_transform.location.distance(emergency_loc)
                 if actual_dist > 100.0:
                     logging.warning(
                         "Emergency spawned far from ego (%.1fm vs intended %.1fm)",

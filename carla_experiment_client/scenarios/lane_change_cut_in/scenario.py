@@ -50,7 +50,7 @@ class LaneChangeCutInScenario(BaseScenario):
             role_name="ego",
             autopilot=True,
         )
-        log_spawn(ego, "ego")
+        log_spawn(ego, "ego", ego_spawn)
         self._apply_ego_tm(tm, ego)
 
         nearby_vehicles: list[carla.Actor] = []
@@ -74,16 +74,27 @@ class LaneChangeCutInScenario(BaseScenario):
                     role_name=f"nearby_vehicle_{index}",
                     autopilot=True,
                 )
-                log_spawn(vehicle, f"nearby_vehicle_{index}")
+                log_spawn(vehicle, f"nearby_vehicle_{index}", transform)
                 nearby_vehicles.append(vehicle)
 
         # Use waypoint navigation to find valid adjacent lane position
         cut_in_ahead_m = float(params.get("cut_in_ahead_m", 12.0))
         ego_wp = world.get_map().get_waypoint(ego_spawn.location)
 
-        # Find adjacent lane using waypoint navigation
-        adjacent_wp = ego_wp.get_right_lane() or ego_wp.get_left_lane()
-        if adjacent_wp and adjacent_wp.lane_type == carla.LaneType.Driving:
+        # Find adjacent driving lane using waypoint navigation
+        adjacent_wp = None
+        cut_in_on_right = True
+        right_wp = ego_wp.get_right_lane()
+        if right_wp and right_wp.lane_type == carla.LaneType.Driving:
+            adjacent_wp = right_wp
+            cut_in_on_right = True
+        else:
+            left_wp = ego_wp.get_left_lane()
+            if left_wp and left_wp.lane_type == carla.LaneType.Driving:
+                adjacent_wp = left_wp
+                cut_in_on_right = False
+
+        if adjacent_wp:
             # Navigate ahead in adjacent lane
             ahead_wps = adjacent_wp.next(cut_in_ahead_m)
             if ahead_wps:
@@ -92,8 +103,6 @@ class LaneChangeCutInScenario(BaseScenario):
             else:
                 cut_in_spawn = adjacent_wp.transform
                 cut_in_spawn.location.z += 0.3
-            # Determine steer direction based on which side
-            cut_in_on_right = (adjacent_wp == ego_wp.get_right_lane())
         else:
             cut_in_spawn = offset_transform(ego_spawn, forward=cut_in_ahead_m, right=3.5)
             cut_in_on_right = True
@@ -107,10 +116,13 @@ class LaneChangeCutInScenario(BaseScenario):
             role_name="cut_in_vehicle",
             autopilot=True,
         )
-        log_spawn(cutter, "cut_in_vehicle")
+        log_spawn(cutter, "cut_in_vehicle", cut_in_spawn)
 
         # Validate cut-in vehicle distance
-        cutter_dist = ego_spawn.location.distance(cutter.get_location())
+        cutter_loc = cutter.get_location()
+        if abs(cutter_loc.x) < 0.1 and abs(cutter_loc.y) < 0.1 and abs(cutter_loc.z) < 0.1:
+            cutter_loc = cut_in_spawn.location
+        cutter_dist = ego_spawn.location.distance(cutter_loc)
         if cutter_dist > 50.0:
             logging.warning(
                 "Cut-in vehicle spawned far from ego (%.1fm). Scenario may not work as expected.",
@@ -130,7 +142,7 @@ class LaneChangeCutInScenario(BaseScenario):
             autopilot=True,
         )
         tm.vehicle_percentage_speed_difference(lead_vehicle, lead_speed_delta)
-        log_spawn(lead_vehicle, "lead_slow")
+        log_spawn(lead_vehicle, "lead_slow", lead_spawn)
 
         background_vehicle_count = int(params.get("background_vehicle_count", 20))
         background_walker_count = int(params.get("background_walker_count", 12))

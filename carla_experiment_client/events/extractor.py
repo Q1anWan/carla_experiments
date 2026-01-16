@@ -234,35 +234,29 @@ class EventExtractor:
         return closest
 
     def _nearest_emergency_vehicle(self, radius: float) -> Optional[carla.Actor]:
-        """Find nearest emergency vehicle (ambulance, firetruck, police) by type_id.
-
-        This is more reliable than checking role_name attribute as it directly
-        inspects the vehicle's type_id which always contains the vehicle model.
-        """
+        """Find nearest emergency vehicle by role_name to avoid background false positives."""
         ego_loc = self.ego_vehicle.get_location()
         vehicles = self.world.get_actors().filter("vehicle.*")
         closest = None
         min_dist = radius
-        emergency_keywords = ("ambulance", "firetruck", "police")
         emergency_found = []
         for actor in vehicles:
             if actor.id == self.ego_vehicle.id:
                 continue
-            type_id = actor.type_id.lower()
-            # Check if this is an emergency vehicle by type_id
-            if any(kw in type_id for kw in emergency_keywords):
-                dist = actor.get_location().distance(ego_loc)
-                emergency_found.append((type_id, dist))
-                if dist < min_dist:
-                    min_dist = dist
-                    closest = actor
+            role_name = actor.attributes.get("role_name", "")
+            if role_name != "emergency":
+                continue
+            dist = actor.get_location().distance(ego_loc)
+            emergency_found.append((actor.type_id, dist))
+            if dist < min_dist:
+                min_dist = dist
+                closest = actor
         if emergency_found and not hasattr(self, "_emergency_logged"):
             logging.info("Emergency vehicles found: %s", emergency_found)
             self._emergency_logged = True
         elif not emergency_found and not hasattr(self, "_no_emergency_logged"):
-            # Log all vehicle type_ids to understand what's available
-            all_types = [v.type_id for v in vehicles if v.id != self.ego_vehicle.id][:5]
-            logging.warning("No emergency vehicles found. Sample vehicle types: %s", all_types)
+            all_roles = [v.attributes.get("role_name", "") for v in vehicles if v.id != self.ego_vehicle.id][:5]
+            logging.warning("No emergency vehicles found. Sample vehicle roles: %s", all_roles)
             self._no_emergency_logged = True
         return closest
 

@@ -51,7 +51,7 @@ class PedestrianEmergeScenario(BaseScenario):
             role_name="ego",
             autopilot=True,
         )
-        log_spawn(ego, "ego")
+        log_spawn(ego, "ego", ego_spawn)
         self._apply_ego_tm(tm, ego)
 
         ahead_m = float(params.get("walker_start_ahead_m", 35.0))
@@ -97,7 +97,7 @@ class PedestrianEmergeScenario(BaseScenario):
 
         walker_transform = carla.Transform(walker_location)
         walker, controller = self._spawn_walker(world, rng, walker_transform, speed=walker_speed)
-        log_spawn(walker, "pedestrian")
+        log_spawn(walker, "pedestrian", walker_transform)
 
         # Validate walker spawn distance
         walker_dist = ego_spawn.location.distance(walker.get_location())
@@ -136,7 +136,7 @@ class PedestrianEmergeScenario(BaseScenario):
         occluder.apply_control(
             carla.VehicleControl(throttle=0.0, brake=1.0, hand_brake=True)
         )
-        log_spawn(occluder, "occluder_vehicle")
+        log_spawn(occluder, "occluder_vehicle", occluder_transform)
 
         # Spawn nearby vehicles for traffic density
         nearby_vehicles: list[carla.Actor] = []
@@ -158,7 +158,7 @@ class PedestrianEmergeScenario(BaseScenario):
                         role_name=f"nearby_vehicle_{index}",
                         autopilot=True,
                     )
-                    log_spawn(vehicle, f"nearby_vehicle_{index}")
+                    log_spawn(vehicle, f"nearby_vehicle_{index}", transform)
                     nearby_vehicles.append(vehicle)
                 except RuntimeError:
                     logging.warning("Failed to spawn nearby vehicle %d", index)

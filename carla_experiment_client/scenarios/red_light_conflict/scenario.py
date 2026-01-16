@@ -33,18 +33,81 @@ class RedLightConflictScenario(BaseScenario):
         tm: carla.TrafficManager,
         rng: random.Random,
     ) -> ScenarioContext:
-        spawn_points = world.get_map().get_spawn_points()
+        def _normalize_yaw(yaw: float) -> float:
+            while yaw > 180.0:
+                yaw -= 360.0
+            while yaw < -180.0:
+                yaw += 360.0
+            return yaw
+
+        def _pick_cross_spawn(
+            light: carla.TrafficLight,
+            stop_wp: carla.Waypoint,
+            lights: list[carla.TrafficLight],
+            radius_m: float = 35.0,
+        ) -> carla.Transform | None:
+            stop_loc = stop_wp.transform.location
+            candidates: list[carla.Transform] = []
+            for other in lights:
+                if other.id == light.id:
+                    continue
+                try:
+                    other_wps = other.get_stop_waypoints()
+                except RuntimeError:
+                    continue
+                for wp in other_wps:
+                    if wp.transform.location.distance(stop_loc) <= radius_m:
+                        candidates.append(wp.transform)
+                        break
+            if candidates:
+                return rng.choice(candidates)
+            return None
+
+        map_obj = world.get_map()
+
+        def _pick_cross_spawn_from_spawns(
+            stop_wp: carla.Waypoint,
+            spawn_points: list[carla.Transform],
+            radius_m: float = 45.0,
+            min_yaw_diff: float = 60.0,
+        ) -> carla.Transform | None:
+            stop_loc = stop_wp.transform.location
+            ego_yaw = stop_wp.transform.rotation.yaw
+            candidates: list[carla.Transform] = []
+            for sp in spawn_points:
+                if sp.location.distance(stop_loc) > radius_m:
+                    continue
+                wp = map_obj.get_waypoint(
+                    sp.location, project_to_road=True, lane_type=carla.LaneType.Driving
+                )
+                if wp is None:
+                    continue
+                if abs(wp.transform.location.z - stop_loc.z) > 2.0:
+                    continue
+                yaw_diff = abs(_normalize_yaw(wp.transform.rotation.yaw - ego_yaw))
+                if yaw_diff < min_yaw_diff or yaw_diff > 160.0:
+                    continue
+                candidates.append(wp.transform)
+            if candidates:
+                return rng.choice(candidates)
+            return None
+
+        spawn_points = map_obj.get_spawn_points()
         params = self.config.params
         spawn_offset_m = float(params.get("spawn_offset_m", 60.0))
         ego_spawn = get_spawn_point_by_index(
             spawn_points, params.get("ego_spawn_index")
         )
         traffic_light = None
-        cross_spawn = None
+        cross_spawn = get_spawn_point_by_index(
+            spawn_points, params.get("cross_spawn_index")
+        )
+        if cross_spawn is not None:
+            cross_spawn.location.z += 0.3
         if ego_spawn is None and bool(params.get("fast_spawn")):
             ego_spawn = pick_spawn_point(spawn_points, rng)
+        lights = list(world.get_actors().filter("traffic.traffic_light"))
         if ego_spawn is None:
-            lights = list(world.get_actors().filter("traffic.traffic_light"))
             rng.shuffle(lights)
             for light in lights:
                 try:
@@ -58,19 +121,45 @@ class RedLightConflictScenario(BaseScenario):
                 if not previous:
                     continue
                 ego_spawn = previous[0].transform
+                ego_spawn.location.z += 0.3
                 traffic_light = light
-                group = [item for item in light.get_group() if item.id != light.id]
-                rng.shuffle(group)
-                for other in group:
+                cross_spawn = _pick_cross_spawn(light, stop_wp, lights)
+                if cross_spawn is None:
+                    cross_spawn = _pick_cross_spawn_from_spawns(stop_wp, spawn_points)
+                break
+        elif lights:
+            ego_wp = map_obj.get_waypoint(ego_spawn.location)
+            if ego_wp is not None and spawn_offset_m > 0:
+                ahead_wps = ego_wp.next(spawn_offset_m)
+                if ahead_wps:
+                    target_loc = ahead_wps[0].transform.location
+                    for light in lights:
+                        try:
+                            stop_wps = light.get_stop_waypoints()
+                        except RuntimeError:
+                            continue
+                        for stop_wp in stop_wps:
+                            if stop_wp.transform.location.distance(target_loc) <= 25.0:
+                                traffic_light = light
+                                if cross_spawn is None:
+                                    cross_spawn = _pick_cross_spawn(light, stop_wp, lights)
+                                    if cross_spawn is None:
+                                        cross_spawn = _pick_cross_spawn_from_spawns(stop_wp, spawn_points)
+                                break
+                        if traffic_light is not None:
+                            break
+            if traffic_light is None and cross_spawn is not None:
+                for light in lights:
                     try:
-                        other_wps = other.get_stop_waypoints()
+                        stop_wps = light.get_stop_waypoints()
                     except RuntimeError:
                         continue
-                    if not other_wps:
-                        continue
-                    cross_spawn = rng.choice(other_wps).transform
-                    break
-                break
+                    for stop_wp in stop_wps:
+                        if stop_wp.transform.location.distance(cross_spawn.location) <= 25.0:
+                            traffic_light = light
+                            break
+                    if traffic_light is not None:
+                        break
         if ego_spawn is None:
             ego_spawn = find_spawn_point(
                 world,
@@ -89,7 +178,7 @@ class RedLightConflictScenario(BaseScenario):
             role_name="ego",
             autopilot=True,
         )
-        log_spawn(ego, "ego")
+        log_spawn(ego, "ego", ego_spawn)
         self._apply_ego_tm(tm, ego)
 
         # Spawn multiple cross traffic vehicles
@@ -99,6 +188,8 @@ class RedLightConflictScenario(BaseScenario):
 
         if cross_spawn is None:
             cross_spawn = offset_transform(ego_spawn, right=8.0, forward=8.0)
+        else:
+            cross_spawn.location.z += 0.3
 
         for i in range(cross_vehicle_count):
             # Space cross vehicles behind each other
@@ -114,7 +205,7 @@ class RedLightConflictScenario(BaseScenario):
                     role_name=f"cross_vehicle_{i}",
                     autopilot=False,
                 )
-                log_spawn(cross_vehicle, f"cross_vehicle_{i}")
+                log_spawn(cross_vehicle, f"cross_vehicle_{i}", cross_transform)
                 cross_vehicles.append(cross_vehicle)
             except RuntimeError:
                 logging.warning("Failed to spawn cross vehicle %d", i)
@@ -139,7 +230,7 @@ class RedLightConflictScenario(BaseScenario):
                         role_name=f"nearby_vehicle_{index}",
                         autopilot=True,
                     )
-                    log_spawn(vehicle, f"nearby_vehicle_{index}")
+                    log_spawn(vehicle, f"nearby_vehicle_{index}", transform)
                     nearby_vehicles.append(vehicle)
                 except RuntimeError:
                     logging.warning("Failed to spawn nearby vehicle %d", index)
@@ -179,7 +270,16 @@ class RedLightConflictScenario(BaseScenario):
         light_state = {"turned_red": False, "cross_released": False}
 
         def dynamic_light_control(frame: int) -> None:
-            light = traffic_light or ego.get_traffic_light()
+            nonlocal traffic_light
+            light = traffic_light
+            if light is None and frame >= max(red_light_frame - int(self.config.fps * 5), 0):
+                try:
+                    light = ego.get_traffic_light()
+                except RuntimeError as e:
+                    logging.warning("Traffic light lookup failed: %s", e)
+                    return
+                if light is not None:
+                    traffic_light = light
 
             # Keep ALL cross vehicles stopped until release
             release_frame = int(cross_release_frame) if cross_release_frame else 0
@@ -203,15 +303,6 @@ class RedLightConflictScenario(BaseScenario):
                     if not light_state["turned_red"]:
                         light.set_state(carla.TrafficLightState.Green)
                         light.set_green_time(red_light_frame / self.config.fps + 5.0)
-                        # Keep cross traffic red
-                        try:
-                            group = light.get_group()
-                        except AttributeError:
-                            group = []
-                        for other in group:
-                            if other.id != light.id:
-                                other.set_state(carla.TrafficLightState.Red)
-                                other.set_red_time(red_light_frame / self.config.fps + 5.0)
 
                 # Phase 2: Turn RED when ego is approaching intersection
                 elif frame >= red_light_frame and not light_state["turned_red"]:
@@ -219,15 +310,6 @@ class RedLightConflictScenario(BaseScenario):
                     light.set_red_time(self.config.duration + 5.0)
                     light_state["turned_red"] = True
                     logging.info("Traffic light turned RED at frame %d", frame)
-                    # Turn cross traffic green
-                    try:
-                        group = light.get_group()
-                    except AttributeError:
-                        group = []
-                    for other in group:
-                        if other.id != light.id:
-                            other.set_state(carla.TrafficLightState.Green)
-                            other.set_green_time(self.config.duration + 5.0)
 
             except RuntimeError as e:
                 logging.warning("Traffic light control failed: %s", e)
