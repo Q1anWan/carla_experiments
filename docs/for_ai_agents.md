@@ -339,6 +339,195 @@ if total_yaw > 45:
 
 ---
 
+## Telemetry Data Structure
+
+### Output Files
+
+Each scenario run produces two telemetry files:
+- `telemetry.json` - Complete data with ego vehicle and tracked actors
+- `telemetry.csv` - Ego-only tabular format for analysis
+
+### JSON Schema Overview
+
+```json
+{
+  "metadata": {
+    "fps": 20,
+    "total_frames": 600,
+    "coordinate_system": "SAE_J670",
+    "units": {
+      "position": "meters",
+      "velocity": "m/s",
+      "acceleration": "m/s^2",
+      "angular_velocity": "deg/s"
+    }
+  },
+  "frames": [
+    {
+      "frame": 100,
+      "t_sim": 5.0,
+      "t_world": 5.123,
+      "dt": 0.05,
+      "ego": { ... },
+      "actors": [ ... ]
+    }
+  ]
+}
+```
+
+### Ego Vehicle State
+
+```json
+{
+  "position": {"x": 123.45, "y": -67.89, "z": 0.5},
+  "velocity": {"vx": 12.5, "vy": 0.1, "vz": 0.0},
+  "acceleration": {"ax": -1.2, "ay": 0.05, "az": 0.0},
+  "angular_velocity": {"roll_rate": 0.0, "pitch_rate": 0.0, "yaw_rate": 2.5},
+  "orientation": {"roll": 0.0, "pitch": -0.5, "yaw": 45.0},
+  "speed": 12.5,
+  "control": {"throttle": 0.5, "brake": 0.0, "steer": 0.1}
+}
+```
+
+### Actor State
+
+```json
+{
+  "id": 42,
+  "type": "vehicle",
+  "type_id": "vehicle.tesla.model3",
+  "role_name": "merge_vehicle",
+  "position": {"x": 135.12, "y": -65.45, "z": 0.5},
+  "rotation": {"roll": 0.0, "pitch": 0.0, "yaw": 47.5},
+  "distance_to_ego": 12.34,
+  "velocity": {"x": 13.2, "y": -0.5, "z": 0.0},
+  "speed": 13.21
+}
+```
+
+### CSV Columns (23 columns)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| frame | int | Frame index |
+| t_sim | float | Simulation time (s) |
+| world_x, world_y, world_z | float | World position (m) |
+| vx, vy, vz | float | Velocity (m/s) |
+| ax, ay, az | float | Acceleration (m/s²) |
+| roll_rate, pitch_rate, yaw_rate | float | Angular velocity (deg/s) |
+| roll, pitch, yaw | float | Orientation (deg) |
+| speed | float | Total speed (m/s) |
+| throttle, brake, steer | float | Control inputs |
+
+### SAE J670 Coordinate System
+
+```
+        +Z (Up)
+         |
+         |    +X (Forward)
+         |   /
+         | /
+    +Y __|/________
+  (Left) O (Vehicle Center)
+```
+
+**Conversion from CARLA**: `SAE_Y = -CARLA_Y` (CARLA uses Y-right)
+
+---
+
+## Visualization Generation
+
+### Visualization Module
+
+Location: `carla_experiment_client/visualization/telemetry_map.py`
+
+### Generate Visualizations
+
+```bash
+# Analyze single scenario
+python -m carla_experiment_client.visualization.telemetry_map \
+    --runs runs/test --scenario highway_merge --output ./analysis
+
+# Analyze all scenarios in directory
+python -m carla_experiment_client.visualization.telemetry_map \
+    --runs runs/batch_20260116 --output ./analysis
+```
+
+### Output Files
+
+For each scenario, generates:
+- `{scenario}_trajectory.png` - 2D map with speed coloring
+- `{scenario}_trajectory_accel.png` - 2D map with acceleration coloring
+- `{scenario}_appearance.png` - Actor first-appearance analysis
+- `{scenario}_summary.json` - Numeric summary statistics
+
+### Visualization Contents
+
+**Main Trajectory Plot (4 panels)**:
+1. **Top-left**: 2D trajectory map with ego path (colored by speed/accel), actor paths, event markers
+2. **Top-right**: Speed and acceleration time series with event markers
+3. **Bottom-left**: Control inputs (steer/throttle/brake) with oscillation highlighting
+4. **Bottom-right**: Actor distance to ego over time (first-appearance marked)
+
+### Programmatic Usage
+
+```python
+from carla_experiment_client.visualization import generate_scenario_report
+
+summary = generate_scenario_report(
+    telemetry_path="runs/test/telemetry.json",
+    events_path="runs/test/events.json",
+    output_dir="./analysis",
+    scenario_name="highway_merge"
+)
+
+print(f"Events: {summary['events_count']}")
+print(f"Speed: {summary['speed_mean']:.1f} m/s")
+print(f"Hard brakes: {summary['brake_hard_count']}")
+```
+
+### Summary Statistics
+
+The `summary.json` includes:
+
+```json
+{
+  "scenario": "highway_merge",
+  "duration": 60.0,
+  "total_frames": 600,
+  "events_count": 2,
+  "actors_count": 8,
+  "steer_std": 0.0234,
+  "steer_changes": 145,
+  "lateral_accel_std": 0.156,
+  "speed_mean": 15.2,
+  "speed_max": 18.5,
+  "accel_max": 2.1,
+  "accel_min": -4.2,
+  "brake_hard_count": 3,
+  "key_actors": [
+    {
+      "role": "merge_vehicle",
+      "type": "vehicle",
+      "first_seen_t": 0.0,
+      "first_seen_distance": 45.2,
+      "min_distance": 5.9
+    }
+  ]
+}
+```
+
+### Diagnosing Issues with Visualizations
+
+| Issue | What to Check |
+|-------|---------------|
+| Actor not visible | `_appearance.png` - check first_seen_distance (should be <100m) |
+| Event not occurring | `_trajectory.png` - check if actor path intersects ego |
+| Oscillation | `_trajectory.png` (bottom-left) - yellow highlighted regions |
+| Spawn failure | `_summary.json` - check first_seen_distance of key actors |
+
+---
+
 ## Configuration Parameters
 
 ### Scenario Config
