@@ -15,6 +15,7 @@ from ..base import (
     log_spawn,
     offset_transform,
     pick_spawn_point,
+    right_vector,
 )
 
 
@@ -117,6 +118,13 @@ class LaneChangeCutInScenario(BaseScenario):
             autopilot=True,
         )
         log_spawn(cutter, "cut_in_vehicle", cut_in_spawn)
+        cut_in_speed_delta = params.get("cut_in_speed_delta")
+        self._configure_vehicle_tm(
+            tm,
+            cutter,
+            speed_delta=float(cut_in_speed_delta) if cut_in_speed_delta is not None else None,
+            auto_lane_change=False,
+        )
 
         # Validate cut-in vehicle distance
         cutter_loc = cutter.get_location()
@@ -182,13 +190,10 @@ class LaneChangeCutInScenario(BaseScenario):
         relocate_forward = float(params.get("cut_in_relocate_forward_m", 8.0))
         relocate_right = float(params.get("cut_in_relocate_right_m", 3.5))
 
-        # Determine steer direction: steer left (negative) if on right, right (positive) if on left
-        if cut_in_on_right:
-            steer = -abs(base_steer)  # Steer left to cut into ego's lane
-        else:
-            steer = abs(base_steer)   # Steer right to cut into ego's lane
+        steer = -abs(base_steer)
 
         def cut_in(frame: int) -> None:
+            nonlocal steer
             if frame == start_frame:
                 if relocate_on_trigger:
                     ego_transform = ego.get_transform()
@@ -197,7 +202,26 @@ class LaneChangeCutInScenario(BaseScenario):
                     )
                     cutter.set_transform(relocate_transform)
                 cutter.set_autopilot(False)
-                logging.info("Cut-in maneuver started at frame %d, steer=%.2f", frame, steer)
+                ego_transform = ego.get_transform()
+                if relocate_on_trigger:
+                    cutter_loc = relocate_transform.location
+                else:
+                    cutter_loc = cutter.get_transform().location
+                ego_right = right_vector(ego_transform)
+                relative = cutter_loc - ego_transform.location
+                right_dot = (
+                    relative.x * ego_right.x
+                    + relative.y * ego_right.y
+                    + relative.z * ego_right.z
+                )
+                steer = -abs(base_steer) if right_dot > 0 else abs(base_steer)
+                dist = cutter_loc.distance(ego_transform.location)
+                logging.info(
+                    "Cut-in maneuver started at frame %d, steer=%.2f, distance=%.1fm",
+                    frame,
+                    steer,
+                    dist,
+                )
             if start_frame <= frame < start_frame + duration_frames:
                 cutter.apply_control(carla.VehicleControl(throttle=throttle, steer=steer))
             if frame == start_frame + duration_frames:

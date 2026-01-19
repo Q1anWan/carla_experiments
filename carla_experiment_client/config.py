@@ -53,6 +53,8 @@ class ScenarioConfig:
     voice_lead_time_s: float
     robot_precue_lead_s: float
     min_event_time_s: float
+    enabled_event_types: Optional[list[str]] = None
+    single_event_types: Optional[list[str]] = None
     params: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -131,6 +133,8 @@ def apply_render_preset(config: ScenarioConfig, preset: Dict[str, Any]) -> Scena
         voice_lead_time_s=config.voice_lead_time_s,
         robot_precue_lead_s=config.robot_precue_lead_s,
         min_event_time_s=min_event_time_s,
+        enabled_event_types=config.enabled_event_types,
+        single_event_types=config.single_event_types,
         params=params,
     )
 
@@ -198,6 +202,8 @@ def load_scenario_config(path: Path) -> ScenarioConfig:
     )
 
     events_raw = raw.get("events", {}) or {}
+    enabled_event_types = _parse_event_list(events_raw.get("enabled_types"))
+    single_event_types = _parse_event_list(events_raw.get("single_event_types"))
 
     return ScenarioConfig(
         scenario_id=str(raw.get("id", "unknown")),
@@ -214,5 +220,17 @@ def load_scenario_config(path: Path) -> ScenarioConfig:
         voice_lead_time_s=float(events_raw.get("voice_lead_time_s", 3.0)),
         robot_precue_lead_s=float(events_raw.get("robot_precue_lead_s", 0.5)),
         min_event_time_s=float(events_raw.get("min_event_time_s", 0.0)),
+        enabled_event_types=enabled_event_types,
+        single_event_types=single_event_types,
         params=raw.get("scenario", {}) or {},
     )
+
+
+def _parse_event_list(value: Any) -> Optional[list[str]]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, (list, tuple, set)):
+        return [str(item) for item in value]
+    return None

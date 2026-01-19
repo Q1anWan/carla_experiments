@@ -116,6 +116,13 @@ class HighwayMergeScenario(BaseScenario):
             autopilot=True,
         )
         log_spawn(merge_vehicle, "merge_vehicle", merge_spawn)
+        merge_speed_delta = params.get("merge_speed_delta")
+        self._configure_vehicle_tm(
+            tm,
+            merge_vehicle,
+            speed_delta=float(merge_speed_delta) if merge_speed_delta is not None else None,
+            auto_lane_change=False,
+        )
 
         # Validate merge vehicle is within reasonable distance
         merge_loc = merge_vehicle.get_location()
@@ -187,29 +194,32 @@ class HighwayMergeScenario(BaseScenario):
         relocate_forward = float(params.get("merge_relocate_forward_m", 8.0))
         relocate_right = float(params.get("merge_relocate_right_m", 3.5))
 
-        # Calculate steer direction based on relocate position if relocate is enabled
-        if relocate_on_trigger:
-            # After relocate, merge_vehicle will be on the right side, steer left to merge
-            steer = -abs(base_steer) if relocate_right > 0 else abs(base_steer)
-        else:
-            relative = merge_vehicle.get_transform().location - ego_spawn.location
-            ego_right = right_vector(ego_spawn)
-            right_dot = relative.x * ego_right.x + relative.y * ego_right.y + relative.z * ego_right.z
-            steer = -abs(base_steer) if right_dot > 0 else abs(base_steer)
+        steer = -abs(base_steer)
 
         def merge_trigger(frame: int) -> None:
+            nonlocal steer
             if frame == start_frame:
+                ego_transform = ego.get_transform()
+                merge_loc = None
                 if relocate_on_trigger:
-                    ego_transform = ego.get_transform()
                     relocate_transform = offset_transform(
                         ego_transform, forward=relocate_forward, right=relocate_right
                     )
                     merge_vehicle.set_transform(relocate_transform)
+                    merge_loc = relocate_transform.location
                 merge_vehicle.set_autopilot(False)
+                if merge_loc is None:
+                    merge_loc = merge_vehicle.get_transform().location
+                ego_right = right_vector(ego_transform)
+                relative = merge_loc - ego_transform.location
+                right_dot = (
+                    relative.x * ego_right.x
+                    + relative.y * ego_right.y
+                    + relative.z * ego_right.z
+                )
+                steer = -abs(base_steer) if right_dot > 0 else abs(base_steer)
                 # Log merge start with vehicle positions
-                merge_loc = merge_vehicle.get_location()
-                ego_loc = ego.get_location()
-                dist = merge_loc.distance(ego_loc)
+                dist = merge_loc.distance(ego_transform.location)
                 logging.info("Merge maneuver started at frame %d, steer=%.2f, distance=%.1fm",
                              frame, steer, dist)
             if start_frame <= frame < start_frame + duration_frames:

@@ -19,6 +19,10 @@ events:
   min_event_time_s: 30.0
   voice_lead_time_s: 3.0
   robot_precue_lead_s: 0.5
+  enabled_types:
+    - stop_for_red_light
+  single_event_types:
+    - stop_for_red_light
 scenario:
   # Critical event at ~40s
   # NEW DESIGN: Ego approaches on GREEN, then light turns RED creating conflict

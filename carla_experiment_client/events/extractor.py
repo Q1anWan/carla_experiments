@@ -20,6 +20,8 @@ class EventExtractor:
     voice_lead_time_s: float = 3.0
     robot_precue_lead_s: float = 0.5
     min_event_time_s: float = 0.0
+    enabled_event_types: Optional[set[str]] = None
+    single_event_types: set[str] = field(default_factory=set)
 
     _prev_speed: float = 0.0
     _prev_lane_id: Optional[int] = None
@@ -143,6 +145,10 @@ class EventExtractor:
         return list(self._events)
 
     def _emit(self, t: float, event_type: str) -> None:
+        if self.enabled_event_types is not None and event_type not in self.enabled_event_types:
+            return
+        if event_type in self.single_event_types and event_type in self._last_event_time:
+            return
         if t < self.min_event_time_s:
             return
         if not self._should_emit(t, event_type):
@@ -373,6 +379,15 @@ class EventExtractor:
         ego_road_id = ego_waypoint.road_id
 
         vehicles = self.world.get_actors().filter("vehicle.*")
+        target_roles = {"cut_in_vehicle", "merge_vehicle"}
+        target_present = False
+        for actor in vehicles:
+            if actor.id == self.ego_vehicle.id:
+                continue
+            role_name = actor.attributes.get("role_name", "")
+            if role_name in target_roles:
+                target_present = True
+                break
         current_vehicles_in_lane = set()
         current_distances = {}
         detected_cut_in = None
@@ -380,12 +395,16 @@ class EventExtractor:
         for actor in vehicles:
             if actor.id == self.ego_vehicle.id:
                 continue
+            if target_present:
+                role_name = actor.attributes.get("role_name", "")
+                if role_name not in target_roles:
+                    continue
 
             actor_loc = actor.get_location()
             dist = actor_loc.distance(ego_loc)
 
-            # Only check vehicles within 40m
-            if dist > 40.0:
+            # Only check vehicles within 60m
+            if dist > 60.0:
                 continue
 
             # Check if vehicle is in front

@@ -1,3 +1,25 @@
+# Known Issues / Notes (2026-01-19)
+
+Context: Full-length runs executed in CARLA312 against server 192.168.31.32:2000.
+Primary outputs: `runs/full_test_20260119_130820_r6` (full suite),
+`runs/fix_test_20260119_141725_r7` (highway_merge),
+`runs/fix_test_20260119_145437_r9` (lane_change_cut_in).
+
+## Updates
+- Added per-scenario event allowlist + single-event filters to reduce noisy generic events.
+- highway_merge: merge trigger aligned to ~40s (frame 800 at 20fps), merge vehicle speed delta added, and steer direction computed at trigger time.
+- lane_change_cut_in: relocation at trigger enabled to guarantee cut-in proximity; steer direction computed from relocated position.
+- Cut-in detection now prioritizes scenario roles (merge/cut-in) when present and uses a 60m search radius.
+
+## Observed issues
+- lane_change_cut_in still requires `cut_in_relocate_on_trigger: true` due to unstable adjacent lanes on the current spawn; better spawn selection is still needed if teleportation is unacceptable.
+- yield_to_emergency: emergency actor first telemetry frame can show position (0,0,0) at spawn frame; likely due to snapshot timing vs. spawn callback.
+- pedestrian_emerge: walker relocation works, but initial spawn logs warn about being far from ego (expected with relocate); actor cleanup warnings appear after respawn.
+- red_light_conflict: stability improves after map reload; keep reloading Town03 before running if timeouts recur.
+- Client/server version mismatch warnings persist (client 3cfbfc0 vs server 2a087ff).
+
+---
+
 # Known Issues / Notes (2026-01-16)
 
 Context: Full-length runs executed in CARLA312 against server 192.168.31.32:2000.

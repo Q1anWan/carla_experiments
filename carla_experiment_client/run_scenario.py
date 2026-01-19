@@ -170,6 +170,8 @@ def run_scenario(
             voice_lead_time_s=config.voice_lead_time_s,
             robot_precue_lead_s=config.robot_precue_lead_s,
             min_event_time_s=config.min_event_time_s,
+            enabled_event_types=set(config.enabled_event_types or []) or None,
+            single_event_types=set(config.single_event_types or []),
         )
 
         # Initialize telemetry recorder (default enabled)

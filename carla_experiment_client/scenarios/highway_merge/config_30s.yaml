@@ -19,15 +19,21 @@ events:
   min_event_time_s: 30.0
   voice_lead_time_s: 3.0
   robot_precue_lead_s: 0.5
+  enabled_types:
+    - vehicle_cut_in
+  single_event_types:
+    - vehicle_cut_in
 scenario:
-  # Critical event at ~40s (frame 400 at 10fps, frame 800 at 20fps)
-  # Merge vehicle starts in adjacent lane far ahead, naturally approaches and merges
+  # Critical event at ~40s (frame 800 at 20fps)
+  # Merge vehicle starts in adjacent lane ahead, naturally approaches and merges
   # NO relocate - merge vehicle visible from beginning for realistic approach
-  merge_trigger_frame: 400          # Merge maneuver starts at 40s (10fps)
-  merge_duration_frames: 60         # 6s merge maneuver (smoother)
+  merge_trigger_frame: 800          # Merge maneuver starts at ~40s (20fps)
+  merge_duration_frames: 120        # 6s merge maneuver (smoother at 20fps)
   merge_throttle: 0.65              # Moderate throttle during merge
   merge_steer: -0.30                # Gentle steer left to merge
   merge_relocate_on_trigger: false  # DISABLED - no sudden teleport
+  merge_vehicle_ahead_m: 25.0       # Keep merge vehicle ahead but close enough to merge
+  merge_speed_delta: 15.0           # Slow merge vehicle to keep it near ego
   prewarm_seconds: 1.0
   # Lead vehicle creates natural car-following situation
   lead_slow_distance_m: 80.0        # Much further ahead - no constant braking

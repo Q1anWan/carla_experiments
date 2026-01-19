@@ -19,6 +19,10 @@ events:
   min_event_time_s: 30.0
   voice_lead_time_s: 3.0
   robot_precue_lead_s: 0.5
+  enabled_types:
+    - vehicle_cut_in
+  single_event_types:
+    - vehicle_cut_in
 scenario:
   # Critical event at ~40s (frame 800 at 20fps)
   # Cut-in vehicle drives in adjacent lane and naturally cuts into ego's lane
@@ -28,9 +32,11 @@ scenario:
   cut_in_duration_frames: 100        # 5s cut-in maneuver (smoother)
   cut_in_throttle: 0.60              # Moderate throttle during cut-in
   cut_in_steer: -0.25                # Gentle steer left to cut into ego's lane
-  cut_in_relocate_on_trigger: false  # DISABLED - no sudden teleport
+  cut_in_relocate_on_trigger: true   # Relocate at trigger to keep cut-in near ego
   cut_in_relocate_forward_m: 16.0    # (unused when relocate disabled)
   cut_in_relocate_right_m: 4.8       # (unused when relocate disabled)
+  cut_in_ahead_m: 45.0               # Start ahead in adjacent lane (visible early)
+  cut_in_speed_delta: -10.0          # Slightly faster to stay ahead before cut-in
   prewarm_seconds: 1.0
   # Lead vehicle creates natural car-following - far enough to avoid constant braking
   lead_slow_distance_m: 100.0        # Much further ahead - no constant braking

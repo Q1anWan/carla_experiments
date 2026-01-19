@@ -19,6 +19,10 @@ events:
   min_event_time_s: 30.0
   voice_lead_time_s: 3.0
   robot_precue_lead_s: 0.5
+  enabled_types:
+    - yield_left_turn
+  single_event_types:
+    - yield_left_turn
 scenario:
   # Critical event at ~40s (frame 800 at 20fps)
   # Ego approaches intersection with left turn, uses manual steering
