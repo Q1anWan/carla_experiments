@@ -15,6 +15,8 @@
 - Code overview: `docs/architecture.md`.
 - Runtime config uses `configs/client.yaml` + `configs/scenarios/*.yaml`.
 - `configs/render_presets.yaml` provides `fast`, `fast_long`, `final`.
+- Plan/validate/render pipeline is available via `cli.py` or `runner.py`, producing outputs under `outputs/<episode_id>/`.
+- Interactive editor (Matplotlib) exports `scene_edit.json`, `plan.json`, and `events_plan.json`.
 - `prewarm_seconds` ticks the world before recording to avoid initial drop.
 - All actors spawn before recording; runtime relocation is disabled in 30s configs.
 

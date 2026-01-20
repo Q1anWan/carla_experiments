@@ -41,6 +41,8 @@ Six driving scenarios, each as a self-contained package:
 
 | File | Purpose |
 |------|---------|
+| `cli.py` / `carla_experiment_client/cli.py` | Unified CLI (menu + subcommands) |
+| `runner.py` | Plan/validate/render pipeline runner |
 | `run_scenario.py` | Execute scenario and record data |
 | `render_variants.py` | Generate experiment stimulus variants |
 | `debug_tools.py` | Step-by-step debugging utilities |
@@ -49,6 +51,9 @@ Six driving scenarios, each as a self-contained package:
 
 | Path | Purpose |
 |------|---------|
+| `carla_experiment_client/planning/` | Plan/validate tooling and plan schema |
+| `carla_experiment_client/render/` | Trajectory replay renderer |
+| `carla_experiment_client/editor/` | 2D editor + preview |
 | `carla_experiment_client/scenarios/` | Scenario implementations |
 | `carla_experiment_client/telemetry/` | SAE J670 telemetry recording |
 | `carla_experiment_client/events/extractor.py` | Event detection logic |
@@ -66,6 +71,22 @@ scenarios/<scenario_id>/
 ```
 
 ## Common Tasks
+
+### Plan -> Validate -> Render (New Pipeline)
+
+```bash
+# Export map assets once
+python -m carla_experiment_client.cli map --map Town05
+
+# Compile plan + validate + render
+python -m carla_experiment_client.cli pipeline --episode P1_T2_lane_change --quick
+
+# Editor (GUI)
+python -m carla_experiment_client.cli editor --map-dir data/maps/Town05 --episode-id P1_T2_lane_change
+
+# Editor (headless, automation)
+python -m carla_experiment_client.cli editor --map-dir data/maps/Town05 --episode-id demo --headless
+```
 
 ### Run a Scenario
 

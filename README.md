@@ -5,6 +5,8 @@ A reproducible, headless-friendly client for generating CARLA driving scenario v
 ## Key Features
 
 - **6 Driving Scenarios**: Highway merge, lane change cut-in, pedestrian emerge, unprotected left turn, red light conflict, yield to emergency
+- **Plan → Validate → Render Pipeline**: Decoupled planning and replay for deterministic outputs
+- **2D Interactive Editor**: Keyframe-based scene editing with timeline scrubbing and event markers
 - **SAE J670 Telemetry**: Vehicle state recording in standard automotive coordinate system
 - **Event Detection**: Automatic extraction of driving decision points
 - **Experiment Variants**: Generate 6 stimulus variants (Voice x Robot conditions)
@@ -44,6 +46,10 @@ carla_experiment_client/
 │   ├── sensors/                      # Camera recording
 │   │   └── camera_recorder.py        # RGB camera capture
 │   │
+│   ├── planning/                     # Plan/validate tooling (new)
+│   ├── render/                       # Trajectory replay renderer (new)
+│   ├── editor/                       # 2D editor + preview (new)
+│   ├── cli.py                        # Unified CLI (new)
 │   ├── run_scenario.py               # Main execution pipeline
 │   ├── render_variants.py            # Variant generation
 │   ├── config.py                     # Configuration models
@@ -52,6 +58,9 @@ carla_experiment_client/
 ├── configs/                          # Global configuration files
 │   ├── client.yaml                   # CARLA server connection
 │   ├── render_presets.yaml           # Quality/speed presets
+│   ├── globals.yaml                  # Plan/validate/render defaults (new)
+│   ├── episodes/                     # Episode configs (new)
+│   └── suites/                       # Suite configs (new)
 │   └── natural_driving.yaml          # Traffic manager presets
 │
 ├── docs/                             # Documentation
@@ -62,7 +71,8 @@ carla_experiment_client/
 │   │   └── coordinate_systems.md     # Coordinate system guide
 │   └── architecture.md               # System architecture
 │
-└── runs/                             # Output directory
+├── outputs/                          # Plan/validate/render outputs (new)
+└── runs/                             # Legacy scenario outputs
 ```
 
 ## Quick Start
@@ -91,6 +101,23 @@ python run_scenario.py --scenario carla_experiment_client/scenarios/highway_merg
 python run_scenario.py --scenario highway_merge --render-preset fast --out runs/quick_test
 ```
 
+### Plan → Validate → Render (New Pipeline)
+
+```bash
+# Export map assets once
+python -m carla_experiment_client.cli map --map Town05
+
+# Compile plan + validate + render (quick)
+python -m carla_experiment_client.cli pipeline --episode P1_T2_lane_change --quick
+
+# Or step-by-step
+python -m carla_experiment_client.cli plan --episode P1_T2_lane_change
+python -m carla_experiment_client.cli validate --episode P1_T2_lane_change
+python -m carla_experiment_client.cli render --episode P1_T2_lane_change --quick
+```
+
+For a detailed overview, see `docs/plan_validate_render_update.md`.
+
 ### Output Files
 
 Each run produces:
@@ -105,6 +132,21 @@ runs/test/
 ├── master_video.mp4       # Camera video
 ├── run.log                # Execution log
 └── frames/                # Raw frames
+```
+
+Plan/validate/render outputs live under `outputs/<episode_id>/`:
+
+```
+outputs/P1_T2_lane_change/
+├── plan.json
+├── events_plan.json
+├── scene_edit.json         # editor output
+├── validation_report.json
+├── master_video.mp4
+├── telemetry.json
+├── telemetry.csv
+├── events.json
+└── run_metadata.json
 ```
 
 ## Telemetry Data

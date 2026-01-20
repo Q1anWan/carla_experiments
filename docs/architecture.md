@@ -3,7 +3,15 @@
 This document describes the program logic, module responsibilities, and public interfaces.
 It is intended to help AI agents modify the project safely.
 
-## 1) Runtime data flow (run_scenario)
+## 1) Runtime data flow (Plan -> Validate -> Render)
+
+1. `map_exporter` generates map assets (centerlines, junctions, spawn candidates).
+2. `planner_compiler` compiles episode configs into `plan.json` + `events_plan.json`.
+3. `validator` checks event presence, lane-change recognition, and map feasibility.
+4. `renderer` replays trajectories in CARLA, records video and telemetry.
+5. Outputs are written under `outputs/<episode_id>/` (plan, events, validation, video, telemetry).
+
+## 2) Runtime data flow (legacy run_scenario)
 
 1. CLI loads a scenario YAML and optional render preset.
 2. CARLA connection is created and world settings are applied (sync + fixed delta).
@@ -15,7 +23,16 @@ It is intended to help AI agents modify the project safely.
 6. Outputs are written (events, metadata, video).
 7. Actors are cleaned up and world settings restored.
 
-## 2) Entry points and CLI interfaces
+## 3) Entry points and CLI interfaces
+
+- `cli.py` / `carla_experiment_client/cli.py`
+  - Unified CLI (menu + subcommands).
+  - Subcommands: `map`, `plan`, `validate`, `render`, `pipeline`, `preview`, `editor`, `suite`.
+  - Supports headless editor export with `--headless`.
+
+- `runner.py`
+  - Plan/validate/render pipeline runner (non-interactive).
+  - Args: `plan`, `validate`, `render`, `all`.
 
 - `run_scenario.py`
   - Wrapper for `carla_experiment_client/run_scenario.py`.
@@ -31,10 +48,19 @@ It is intended to help AI agents modify the project safely.
   - Subcommands: `check_connection`, `tick_sync`, `camera`, `scenario`, `events`, `audio`, `variants`.
   - Use for step-by-step validation without full runs.
 
-## 3) Configuration files
+## 4) Configuration files
 
 - `configs/client.yaml`
   - Connection defaults: `host`, `port`, `tm_port`, `timeout`, `allow_version_mismatch`.
+
+- `configs/globals.yaml`
+  - Plan/validate/render defaults (dt, recording, weather, validation thresholds).
+
+- `configs/episodes/*.yaml`
+  - Episode-level planning inputs for the planner compiler.
+
+- `configs/suites/*.yaml`
+  - Suite collections of episode IDs for batch runs.
 
 - `configs/scenarios/*.yaml`
   - Scenario runtime config.
@@ -51,7 +77,21 @@ It is intended to help AI agents modify the project safely.
   - Fields: `fps`, `duration`, `fixed_delta_seconds`, `camera`, `scenario_overrides`, `scale_frames`, `scale_min_event_time`.
   - `scale_frames` rescales all numeric `*_frame` / `*_frames` in `scenario`.
 
-## 4) Core modules and interfaces
+## 5) Core modules and interfaces
+
+### `carla_experiment_client/planning/*`
+- `map_exporter.py`: export map graph + geojson assets.
+- `trajectory_schema.py`: plan/event schema + load/save helpers.
+- `planner_compiler.py`: episode YAML -> time-parameterized trajectories.
+- `validator.py`: feasibility + event checks prior to rendering.
+
+### `carla_experiment_client/render/*`
+- `replay_controller.py`: trajectory follower (teleport, MVP).
+- `renderer.py`: replay + record video/telemetry/events.
+
+### `carla_experiment_client/editor/*`
+- `interactive_editor.py`: keyframe-based scene editor + export.
+- `mvp.py`: 2D preview renderer for `plan.json`.
 
 ### `carla_experiment_client/carla_client.py`
 - Responsibility: connect to CARLA, load map, apply sync settings, configure Traffic Manager.
@@ -119,7 +159,18 @@ It is intended to help AI agents modify the project safely.
 ### `carla_experiment_client/utils.py`
 - Helpers: file I/O, command execution, json writing, clamp.
 
-## 5) Outputs and artifacts
+## 6) Outputs and artifacts
+
+Plan/validate/render outputs:
+- `outputs/<episode_id>/plan.json`
+- `outputs/<episode_id>/events_plan.json`
+- `outputs/<episode_id>/scene_edit.json` (editor output)
+- `outputs/<episode_id>/validation_report.json`
+- `outputs/<episode_id>/master_video.mp4`
+- `outputs/<episode_id>/telemetry.json`
+- `outputs/<episode_id>/telemetry.csv`
+- `outputs/<episode_id>/events.json`
+- `outputs/<episode_id>/run_metadata.json`
 
 A run directory includes:
 - `scenario.yaml`: scenario config snapshot.
@@ -133,7 +184,7 @@ Variant rendering adds:
 - `variants/voice{v}_robot{r}/stimulus.mp4` (if audio enabled)
 - `audio_assets/` and `robot_timeline.csv` (audio-only mode)
 
-## 6) Extension guidelines
+## 7) Extension guidelines
 
 - Add a new scenario:
   1) Create a new scenario class in `carla_experiment_client/scenarios/`.
@@ -148,4 +199,3 @@ Variant rendering adds:
 - Add a render preset:
   1) Add a new preset under `configs/render_presets.yaml`.
   2) Ensure `scale_frames` is set if trigger frames must scale with duration/fps.
-
