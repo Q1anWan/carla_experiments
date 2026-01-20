@@ -169,6 +169,43 @@ python run_scenario.py --scenario highway_merge --render-preset final
 
 **Note**: Trigger frame values are automatically scaled when using presets with different FPS. For example, `trigger_frame: 800` at 20fps becomes 400 at 10fps.
 
+## Interactive 2D Scene Editor (MVP)
+
+The interactive editor loads exported map centerlines and lets you edit multi-actor keyframes with a time slider, add events, visualize conflicts/feasibility, and export `scene_edit.json` plus replay-ready `plan.json/events_plan.json`.
+
+```bash
+# Export map assets once
+python -m carla_experiment_client.planning.map_exporter --map Town05 --out data/maps
+
+# Launch the editor
+python -m carla_experiment_client.editor.interactive_editor \
+  --map-dir data/maps/Town05 \
+  --episode-id P1_T2_lane_change \
+  --out outputs
+```
+
+Editor controls (buttons on the right panel):
+- Add/Move/Del keyframes (click/drag on the map)
+- Time slider (bottom) to scrub trajectories
+- Add Event with `Event` + `Action` fields
+- Analyze (conflict + lane feasibility overlays)
+- Save (scene_edit.json) and Export (plan.json/events_plan.json)
+
+## Unified CLI (Interactive + Subcommands)
+
+The unified CLI provides an interactive menu and command-line subcommands for map export, planning, validation, rendering, and the editor.
+
+```bash
+# Interactive menu
+python -m carla_experiment_client.cli
+python cli.py
+
+# Subcommand examples
+python -m carla_experiment_client.cli map --map Town05
+python -m carla_experiment_client.cli editor --map-dir data/maps/Town05 --episode-id P1_T2_lane_change
+python -m carla_experiment_client.cli pipeline --episode P1_T2_lane_change --quick
+```
+
 ## Generate Experiment Variants
 
 ```bash

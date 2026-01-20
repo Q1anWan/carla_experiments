@@ -46,3 +46,4 @@ validation:
   fail_if_collision: true
   fail_if_route_not_progress: true
   min_distance_progress_m: 120
+  lane_change_window_s: 4.0
