@@ -515,27 +515,28 @@ class SceneEditor:
         )
         self.time_slider.on_changed(self._update_time_marker)
 
-        btn_h = 0.032
-        btn_gap = 0.035
+        btn_h = 0.030
+        btn_gap = 0.033
         col1_x = 0.72
         col2_x = 0.86
         btn_w = 0.12
+        panel_w = 0.26
 
+        # --- Mode toggle (RadioButtons replacing 3 separate buttons) ---
+        ax_mode = self.fig.add_axes([col1_x, 0.82, panel_w, 0.08])
+        self.mode_radio = RadioButtons(ax_mode, ["Add", "Move", "Delete"], active=1)
+        self.mode_radio.on_clicked(self._on_mode_radio)
+
+        # --- Action buttons (2 columns) ---
         left_buttons = [
-            ("Add KF", self._set_mode_add),
-            ("Move KF", self._set_mode_move),
-            ("Del KF", self._set_mode_delete),
             ("Snap", self._toggle_snap),
             ("Analyze", self._analyze),
             ("Save", self._save_scene_action),
         ]
         right_buttons = [
-            ("AddEvt", self._add_event),
-            ("DelEvt", self._delete_event_btn),
+            ("Export", self._export_action),
             ("Undo", self._undo),
             ("Redo", self._redo),
-            ("Export", self._export_action),
-            ("Reset", self._reset_view),
         ]
 
         y = 0.78
@@ -556,43 +557,74 @@ class SceneEditor:
             self.ax_buttons.append(ax)
             y -= btn_gap
 
-        input_y = 0.54
-        input_h = 0.028
-        input_gap = 0.035
+        # --- Reset button ---
+        ax_reset = self.fig.add_axes([col1_x, 0.78 - 3 * btn_gap, panel_w, btn_h])
+        btn_reset = Button(ax_reset, "Reset View")
+        btn_reset.on_clicked(self._reset_view)
+        self._buttons.append(btn_reset)
 
-        ax_event_type = self.fig.add_axes([col1_x, input_y, 0.26, input_h])
+        # --- Event section ---
+        input_h = 0.026
+        input_gap = 0.032
+        evt_y = 0.62
+
+        ax_event_type = self.fig.add_axes([col1_x, evt_y, panel_w, input_h])
         self.event_type_box = TextBox(ax_event_type, "Event", initial="lane_change")
-        input_y -= input_gap
+        evt_y -= input_gap
 
-        ax_event_action = self.fig.add_axes([col1_x, input_y, 0.26, input_h])
+        ax_event_action = self.fig.add_axes([col1_x, evt_y, panel_w, input_h])
         self.event_action_box = TextBox(ax_event_action, "Action", initial="lane_change")
-        input_y -= input_gap
+        evt_y -= input_gap
 
-        ax_kf_time = self.fig.add_axes([col1_x, input_y, 0.26, input_h])
+        ax_add_evt = self.fig.add_axes([col1_x, evt_y, btn_w, btn_h])
+        btn_add_evt = Button(ax_add_evt, "AddEvt")
+        btn_add_evt.on_clicked(self._add_event)
+        self._buttons.append(btn_add_evt)
+
+        ax_del_evt = self.fig.add_axes([col2_x, evt_y, btn_w, btn_h])
+        btn_del_evt = Button(ax_del_evt, "DelEvt")
+        btn_del_evt.on_clicked(self._delete_event_btn)
+        self._buttons.append(btn_del_evt)
+
+        # --- Keyframe edit fields ---
+        kf_y = evt_y - input_gap - 0.005
+
+        ax_kf_time = self.fig.add_axes([col1_x, kf_y, panel_w, input_h])
         self.kf_time_box = TextBox(ax_kf_time, "KF t", initial="")
         self.kf_time_box.on_submit(self._update_selected_time)
-        input_y -= input_gap
+        kf_y -= input_gap
 
-        ax_kf_speed = self.fig.add_axes([col1_x, input_y, 0.26, input_h])
+        ax_kf_speed = self.fig.add_axes([col1_x, kf_y, panel_w, input_h])
         self.kf_speed_box = TextBox(ax_kf_speed, "KF v", initial="")
         self.kf_speed_box.on_submit(self._update_selected_speed)
-        input_y -= input_gap
+        kf_y -= input_gap
 
-        ax_new_actor = self.fig.add_axes([col1_x, input_y, 0.26, input_h])
+        # --- Actor management ---
+        ax_new_actor = self.fig.add_axes([col1_x, kf_y, panel_w, input_h])
         self.new_actor_box = TextBox(ax_new_actor, "Actor", initial="npc1,vehicle,npc")
-        input_y -= input_gap
+        kf_y -= input_gap
 
-        actor_btn_y = input_y
-        ax_add_actor = self.fig.add_axes([col1_x, actor_btn_y, btn_w, btn_h])
+        ax_add_actor = self.fig.add_axes([col1_x, kf_y, btn_w, btn_h])
         btn_add_actor = Button(ax_add_actor, "Add Actor")
         btn_add_actor.on_clicked(self._add_actor)
         self._buttons.append(btn_add_actor)
 
-        ax_del_actor = self.fig.add_axes([col2_x, actor_btn_y, btn_w, btn_h])
+        ax_del_actor = self.fig.add_axes([col2_x, kf_y, btn_w, btn_h])
         btn_del_actor = Button(ax_del_actor, "Del Actor")
         btn_del_actor.on_clicked(self._delete_actor)
         self._buttons.append(btn_del_actor)
 
+        # --- Keyframe table (in-GUI) ---
+        kf_table_y = kf_y - btn_gap - 0.005
+        kf_table_h = max(0.01, kf_table_y - 0.01)
+        self.ax_kf_table = self.fig.add_axes([col1_x, 0.01, panel_w, kf_table_h])
+        self.ax_kf_table.set_axis_off()
+        self._kf_table_text = self.ax_kf_table.text(
+            0.0, 1.0, "", fontsize=6.5, va="top", ha="left", family="monospace",
+            transform=self.ax_kf_table.transAxes,
+        )
+
+        # --- Status bar ---
         self.ax_status = self.fig.add_axes([0.05, 0.005, 0.65, 0.025])
         self.ax_status.set_axis_off()
         self.status_text = self.ax_status.text(
@@ -600,6 +632,7 @@ class SceneEditor:
             "Mode: move | Snap: OFF | Keys: a/m/d=mode s=snap space=analyze t=table h=help",
             fontsize=8, va="center", ha="left", family="monospace"
         )
+        self._analysis_summary = ""
 
     def _delete_event_btn(self, _event: Any) -> None:
         """Button callback to delete nearest event at current slider time."""
@@ -609,9 +642,50 @@ class SceneEditor:
 
     def _update_status(self) -> None:
         snap_str = "ON" if self.snap_enabled else "OFF"
-        self.status_text.set_text(
-            f"Mode: {self.mode} | Snap: {snap_str} | Keys: a/m/d=mode s=snap space=analyze t=table h=help"
-        )
+        # Find selected actor info
+        actor_id = "?"
+        kf_info = ""
+        if hasattr(self, "actor_radio") and self.scene.actors:
+            actor_id = self.scene.actors[0].actor_id
+            for a in self.scene.actors:
+                if hasattr(self.actor_radio, 'value_selected') and self.actor_radio.value_selected == a.actor_id:
+                    actor_id = a.actor_id
+                    break
+            actor = self._actor_by_id(actor_id)
+            if actor:
+                kf_info = f" | KF: {len(actor.keyframes)}"
+        status = f"Mode: {self.mode} | Snap: {snap_str} | Actor: {actor_id}{kf_info}"
+        if self._analysis_summary:
+            status += f" | {self._analysis_summary}"
+        else:
+            status += " | Keys: a/m/d s=snap space=analyze h=help"
+        self.status_text.set_text(status)
+        self.fig.canvas.draw_idle()
+
+    def _refresh_kf_table(self) -> None:
+        """Update the in-GUI keyframe table for the selected actor."""
+        if not hasattr(self, "_kf_table_text"):
+            return
+        actor = None
+        if hasattr(self, "actor_radio"):
+            for a in self.scene.actors:
+                if hasattr(self.actor_radio, 'value_selected') and self.actor_radio.value_selected == a.actor_id:
+                    actor = a
+                    break
+        if actor is None and self.scene.actors:
+            actor = self.scene.actors[0]
+        if actor is None:
+            self._kf_table_text.set_text("")
+            return
+        lines = [f"KF Table: {actor.actor_id} ({len(actor.keyframes)} pts)"]
+        lines.append(f"{'#':<3} {'t':>6} {'x':>8} {'y':>8} {'v':>6}")
+        lines.append("-" * 35)
+        for idx, kf in enumerate(actor.keyframes[:15]):  # limit display
+            v_str = f"{kf.v:.1f}" if kf.v is not None else "-"
+            lines.append(f"{idx:<3} {kf.t:>6.1f} {kf.x:>8.1f} {kf.y:>8.1f} {v_str:>6}")
+        if len(actor.keyframes) > 15:
+            lines.append(f"  ... +{len(actor.keyframes) - 15} more")
+        self._kf_table_text.set_text("\n".join(lines))
         self.fig.canvas.draw_idle()
 
     def _plot_map(self) -> None:
@@ -686,6 +760,8 @@ class SceneEditor:
             self._draw_actor(actor)
         self._update_selected_marker()
         self._update_event_markers()
+        self._refresh_kf_table()
+        self._update_status()
         self.fig.canvas.draw_idle()
 
     def _update_selected_marker(self) -> None:
@@ -711,17 +787,32 @@ class SceneEditor:
         self._suppress_text = False
         self.fig.canvas.draw_idle()
 
+    def _on_mode_radio(self, label: str) -> None:
+        """Handle mode RadioButtons selection."""
+        self.mode = label.lower()
+        self._update_status()
+
     def _set_mode_add(self, _event: Any) -> None:
         self.mode = "add"
+        self._sync_mode_radio()
         self._update_status()
 
     def _set_mode_move(self, _event: Any) -> None:
         self.mode = "move"
+        self._sync_mode_radio()
         self._update_status()
 
     def _set_mode_delete(self, _event: Any) -> None:
         self.mode = "delete"
+        self._sync_mode_radio()
         self._update_status()
+
+    def _sync_mode_radio(self) -> None:
+        """Sync RadioButtons widget to current mode (called from keyboard shortcuts)."""
+        mode_map = {"add": 0, "move": 1, "delete": 2}
+        idx = mode_map.get(self.mode, 1)
+        if hasattr(self, "mode_radio"):
+            self.mode_radio.set_active(idx)
 
     def _toggle_snap(self, _event: Any) -> None:
         self.snap_enabled = not self.snap_enabled
@@ -856,6 +947,8 @@ class SceneEditor:
         self.active_actor_id = label
         self.selected_keyframe = None
         self._update_selected_marker()
+        self._refresh_kf_table()
+        self._update_status()
 
     def _update_selected_time(self, text: str) -> None:
         if self._suppress_text:
@@ -1333,10 +1426,14 @@ class SceneEditor:
             ttc_pts = [(p[0], p[1]) for p in ttc_points.get(actor.actor_id, [])]
             actor.ttc_scatter.set_offsets(_as_offsets(ttc_pts) if self.show_ttc else np.empty((0, 2)))
 
+        self._analysis_summary = (
+            f"C:{n_conflicts} OL:{n_infeasible} K:{n_kinematic} TTC:{n_ttc}"
+        )
         logging.info(
             "Analysis: conflicts=%d, off-lane=%d, kinematic=%d, TTC warnings=%d",
             n_conflicts, n_infeasible, n_kinematic, n_ttc
         )
+        self._update_status()
         self.fig.canvas.draw_idle()
 
     def run(self) -> None:
