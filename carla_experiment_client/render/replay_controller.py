@@ -13,6 +13,7 @@ except ImportError:  # pragma: no cover
 from ..planning.trajectory_schema import TrajectoryPoint
 
 
+# DocRef: technical_details.md#5
 @dataclass
 class TeleportFollower:
     actor: "carla.Actor"

@@ -60,6 +60,7 @@ class TelemetryFrame:
         }
 
 
+# DocRef: technical_details.md#4.3
 class TelemetryRecorder:
     """Records per-tick telemetry data with SAE J670 coordinate system support.
 

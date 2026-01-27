@@ -71,6 +71,7 @@ class SceneEdit:
     events: List[EventMarker] = field(default_factory=list)
 
 
+# DocRef: technical_details.md#2.4
 class MapIndex:
     def __init__(self, lane_points: List[Tuple[float, float, int]], *, cell_size: float = 5.0) -> None:
         self._points = lane_points
@@ -220,6 +221,7 @@ def _interpolate_position(keyframes: List[Keyframe], t: float) -> Tuple[float, f
     return (keyframes[-1].x, keyframes[-1].y)
 
 
+# DocRef: technical_details.md#2.5
 def _build_trajectory(
     keyframes: List[Keyframe],
     *,
@@ -349,6 +351,7 @@ def _build_plan(
     return plan, events_plan
 
 
+# DocRef: technical_details.md#4.1
 def _load_scene(scene_path: Path) -> SceneEdit:
     raw = json.loads(scene_path.read_text())
     if not isinstance(raw, dict):
@@ -400,6 +403,7 @@ def _load_scene(scene_path: Path) -> SceneEdit:
     )
 
 
+# DocRef: technical_details.md#4.1
 def _save_scene(scene: SceneEdit, scene_path: Path) -> None:
     payload = {
         "version": scene.version,
@@ -439,6 +443,7 @@ def _save_scene(scene: SceneEdit, scene_path: Path) -> None:
     scene_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
 
 
+# DocRef: technical_details.md#2
 class SceneEditor:
     def __init__(
         self,
@@ -724,6 +729,7 @@ class SceneEditor:
         logging.info("Snap to centerline: %s", status)
         self._update_status()
 
+    # DocRef: technical_details.md#2.7
     def _push_undo(self) -> None:
         """Save current state to undo stack."""
         state = json.dumps(self._scene_to_dict())
@@ -1215,6 +1221,7 @@ class SceneEditor:
         _save_scene(self.scene, self.scene_path)
         logging.info("Exported plan/events to %s", self.out_dir)
 
+    # DocRef: technical_details.md#2.6
     def _analyze(self, _event: Any) -> None:
         plan, _ = _build_plan(
             self.scene,

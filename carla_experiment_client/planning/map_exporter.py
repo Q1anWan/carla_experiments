@@ -123,6 +123,7 @@ def _junction_polygons(waypoints: Iterable["carla.Waypoint"]) -> List[Dict[str, 
     return features
 
 
+# DocRef: technical_details.md#4.5
 def export_map(config: MapExportConfig, out_dir: Path, *, max_seconds: float | None = None) -> None:
     if carla is None:
         raise RuntimeError("CARLA Python API is not available.")

@@ -120,6 +120,7 @@ def _build_events(plan: Plan, globals_cfg: Dict[str, Any]) -> List[Dict[str, Any
     return events
 
 
+# DocRef: technical_details.md#5
 def render_plan(
     plan_path: Path,
     globals_path: Path,

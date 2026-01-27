@@ -512,3 +512,32 @@ ax3.set_title(f'mean={mean_err:.2f}m, max={max_err:.2f}m')
 1. **Spawn 失败无重试**: 位置冲突时直接报错
 2. **无碰撞检测**: 渲染过程中不检测物理碰撞
 3. **版本兼容**: 客户端/服务端 API 版本不匹配时仅警告
+
+---
+
+## Appendix: Implementation Pointers
+
+Quick reference mapping each documentation section to source code entry points.
+
+| Doc Section | Source File | Key Symbols |
+|---|---|---|
+| §1 Architecture | `cli.py:117` | `do_pipeline()` — orchestrates plan → validate → render |
+| §2.1 Data Structures | `editor/interactive_editor.py:26-62` | `Keyframe`, `ActorState`, `EventMarker`, `SceneEdit` |
+| §2.2 UI Layout | `editor/interactive_editor.py:488-597` | `SceneEditor._build_ui()`, `ax_map`, `ax_slider`, `ax_status` |
+| §2.3 Edit Modes | `editor/interactive_editor.py:709-721` | `_set_mode_add()`, `_set_mode_move()`, `_set_mode_delete()` |
+| §2.4 MapIndex | `editor/interactive_editor.py:74-112` | `MapIndex.__init__()`, `nearest_lane()`, `snap_to_centerline()` |
+| §2.5 Trajectory Build | `editor/interactive_editor.py:223` | `_build_trajectory(keyframes, dt, duration, map_index)` |
+| §2.6 Analysis | `editor/interactive_editor.py:1218` | `SceneEditor._analyze()` |
+| §2.7 Undo/Redo | `editor/interactive_editor.py:727-836` | `_push_undo()`, `_undo()`, `_redo()`, `_scene_to_dict()`, `_restore_from_dict()` |
+| §3 CLI | `cli.py:368-452` | `build_parser()`, `main()`, `do_map/plan/validate/render/pipeline/editor/suite` |
+| §4.1 scene_edit.json | `editor/interactive_editor.py:352,403` | `_load_scene()`, `_save_scene()` |
+| §4.2 plan.json | `planning/trajectory_schema.py:128-171` | `Plan`, `ActorPlan`, `TrajectoryPoint`, `save_plan()`, `load_plan()` |
+| §4.3 telemetry.json | `telemetry/recorder.py:63` | `TelemetryRecorder`, `TelemetryFrame`, `TelemetryConfig` |
+| §4.4 telemetry.csv | `telemetry/recorder.py` + `telemetry/sae_j670.py` | `TelemetryRecorder.save()`, `SAEJ670Transformer` |
+| §4.5 Map data | `planning/map_exporter.py:126` | `export_map()`, `MapExportConfig`, `_lane_uid()` |
+| §5 Renderer | `render/renderer.py:123` | `render_plan()`, `_spawn_actor()`, `_first_transform()`, `_build_events()` |
+| §5 Replay | `render/replay_controller.py:17` | `TeleportFollower`, `build_follower()` |
+| §6 Comparison | — | **MISSING** — needs `tools/make_comparison.py` |
+| §7 Conversion | — | **MISSING** — needs `tools/convert_telemetry_to_scene.py` |
+
+All paths relative to `carla_experiment_client/`.

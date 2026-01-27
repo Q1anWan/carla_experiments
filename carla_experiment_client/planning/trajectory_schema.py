@@ -162,12 +162,14 @@ class Plan:
         )
 
 
+# DocRef: technical_details.md#4.2
 def save_plan(path: Path, plan: Plan) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(plan.to_dict(), f, indent=2, ensure_ascii=True)
 
 
+# DocRef: technical_details.md#4.2
 def load_plan(path: Path) -> Plan:
     with open(path, "r", encoding="utf-8") as f:
         raw = json.load(f)

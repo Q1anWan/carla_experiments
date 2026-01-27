@@ -114,6 +114,7 @@ def do_render(args: argparse.Namespace) -> None:
     )
 
 
+# DocRef: technical_details.md#3
 def do_pipeline(args: argparse.Namespace) -> None:
     from .planning.validator import validate_plan
     from .render.renderer import render_plan
