@@ -182,13 +182,8 @@ All paths are relative to `carla_experiment_client/` unless otherwise noted.
 
 | Doc Claim | Code File | Symbols | Status |
 |-----------|-----------|---------|--------|
-| Comparison plot generation | — | — | **MISSING** |
-| Summary statistics | — | — | **MISSING** |
-
-**补齐方案**: Create `carla_experiment_client/tools/make_comparison.py` with:
-- `generate_comparison(scene_path, csv_path, events_path, output_dir, actors_filter)` function
-- Outputs: `comparison.png` (3-panel plot) + `summary.json` (mean/p95/max error)
-- Verification: `python -m carla_experiment_client.tools.make_comparison --scene <path> --telemetry-csv <path> --output <dir>`
+| Comparison plot generation | `tools/make_comparison.py` | `generate_comparison()` | OK |
+| Summary statistics | `tools/make_comparison.py` | `summary.json` output | OK |
 
 ---
 
@@ -196,12 +191,7 @@ All paths are relative to `carla_experiment_client/` unless otherwise noted.
 
 | Doc Claim | Code File | Symbols | Status |
 |-----------|-----------|---------|--------|
-| Telemetry to scene_edit conversion | — | — | **MISSING** |
-
-**补齐方案**: Create `carla_experiment_client/tools/convert_telemetry_to_scene.py` with:
-- `convert_telemetry(csv_path, json_path, events_path, output_path, town, duration, dt)` function
-- Extracts ego keyframes from CSV, NPC keyframes from JSON, events from events.json
-- Verification: `python -m carla_experiment_client.tools.convert_telemetry_to_scene --csv <path> --json <path> --events <path> --output <path>`
+| Telemetry to scene_edit conversion | `tools/convert_telemetry_to_scene.py` | `convert_telemetry()` | OK |
 
 ---
 
@@ -220,7 +210,7 @@ Documentation section only — no direct code mapping required. Status: OK (info
 | 3. CLI | 11 | 11 | 0 | |
 | 4. Data formats | 17 | 17 | 0 | |
 | 5. Renderer | 8 | 8 | 0 | |
-| 6. Comparison | 2 | 0 | 2 | Need tools/make_comparison.py |
-| 7. Conversion | 1 | 0 | 1 | Need tools/convert_telemetry_to_scene.py |
+| 6. Comparison | 2 | 2 | 0 | tools/make_comparison.py |
+| 7. Conversion | 1 | 1 | 0 | tools/convert_telemetry_to_scene.py |
 | 8. Limitations | 0 | 0 | 0 | Informational only |
-| **Total** | **81** | **78** | **3** | |
+| **Total** | **81** | **81** | **0** | |
