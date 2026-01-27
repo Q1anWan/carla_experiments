@@ -214,6 +214,35 @@ def do_suite(args: argparse.Namespace) -> None:
         do_pipeline(run_args)
 
 
+def do_compare(args: argparse.Namespace) -> None:
+    from .tools.make_comparison import generate_comparison
+    generate_comparison(
+        scene_path=Path(args.scene),
+        csv_path=Path(args.telemetry_csv),
+        output_dir=Path(args.output),
+        events_path=Path(args.events) if args.events else None,
+        actors_filter=args.actors.split(",") if args.actors else None,
+    )
+
+
+def do_convert(args: argparse.Namespace) -> None:
+    from .tools.convert_telemetry_to_scene import convert_telemetry
+    convert_telemetry(
+        csv_path=Path(args.csv),
+        json_path=Path(args.json),
+        events_path=Path(args.events),
+        output_path=Path(args.output),
+        town=args.town,
+        duration=args.duration,
+        dt=args.dt,
+    )
+
+
+def do_test(_args: argparse.Namespace) -> None:
+    from .editor import test_editor
+    test_editor.run_all_tests()
+
+
 def run_menu(base_args: argparse.Namespace, globals_cfg: Dict[str, Any]) -> None:
     while True:
         print("\n=== CARLA Experiment CLI ===")
@@ -447,6 +476,24 @@ def build_parser() -> argparse.ArgumentParser:
     suite_cmd.add_argument("--encode-timeout", type=float, default=300.0)
     suite_cmd.add_argument("--quick", action="store_true")
 
+    compare_cmd = subparsers.add_parser("compare", help="Generate telemetry vs keyframe comparison")
+    compare_cmd.add_argument("--scene", required=True, help="Path to scene_edit.json")
+    compare_cmd.add_argument("--telemetry-csv", required=True, help="Path to telemetry.csv")
+    compare_cmd.add_argument("--events", help="Path to events.json")
+    compare_cmd.add_argument("--output", required=True, help="Output directory")
+    compare_cmd.add_argument("--actors", help="Comma-separated actor filter")
+
+    convert_cmd = subparsers.add_parser("convert", help="Convert telemetry to scene_edit.json")
+    convert_cmd.add_argument("--csv", required=True, help="Path to telemetry.csv")
+    convert_cmd.add_argument("--json", required=True, help="Path to telemetry.json")
+    convert_cmd.add_argument("--events", required=True, help="Path to events.json")
+    convert_cmd.add_argument("--output", required=True, help="Output scene_edit.json path")
+    convert_cmd.add_argument("--town", default="Town05")
+    convert_cmd.add_argument("--duration", type=float, default=60.0)
+    convert_cmd.add_argument("--dt", type=float, default=0.05)
+
+    test_cmd = subparsers.add_parser("test", help="Run automated editor tests")
+
     return parser
 
 
@@ -485,6 +532,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if not args.suite and not args.all:
             raise SystemExit("suite requires --suite or --all")
         do_suite(args)
+        return 0
+    if args.command == "compare":
+        do_compare(args)
+        return 0
+    if args.command == "convert":
+        do_convert(args)
+        return 0
+    if args.command == "test":
+        do_test(args)
         return 0
 
     return 1
