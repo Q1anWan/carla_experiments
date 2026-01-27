@@ -557,11 +557,17 @@ class SceneEditor:
             self.ax_buttons.append(ax)
             y -= btn_gap
 
-        # --- Reset button ---
-        ax_reset = self.fig.add_axes([col1_x, 0.78 - 3 * btn_gap, panel_w, btn_h])
-        btn_reset = Button(ax_reset, "Reset View")
+        # --- Reset + Pipeline buttons ---
+        reset_y = 0.78 - 3 * btn_gap
+        ax_reset = self.fig.add_axes([col1_x, reset_y, btn_w, btn_h])
+        btn_reset = Button(ax_reset, "Reset")
         btn_reset.on_clicked(self._reset_view)
         self._buttons.append(btn_reset)
+
+        ax_pipeline = self.fig.add_axes([col2_x, reset_y, btn_w, btn_h])
+        btn_pipeline = Button(ax_pipeline, "Pipeline")
+        btn_pipeline.on_clicked(self._run_pipeline)
+        self._buttons.append(btn_pipeline)
 
         # --- Event section ---
         input_h = 0.026
@@ -1313,6 +1319,29 @@ class SceneEditor:
         save_events_plan(self.out_dir / "events_plan.json", events_plan)
         _save_scene(self.scene, self.scene_path)
         logging.info("Exported plan/events to %s", self.out_dir)
+
+    def _run_pipeline(self, _event: Any) -> None:
+        """Run offline pipeline: export + analyze + write validation_report.json."""
+        # 1. Export plan + scene
+        self._export_action(None)
+
+        # 2. Run analysis
+        self._analyze(None)
+
+        # 3. Write validation_report.json
+        report = {
+            "episode_id": self.scene.episode_id,
+            "status": "pass" if not self._analysis_summary or all(
+                v == "0" for v in self._analysis_summary.replace("C:", "").replace("OL:", " ").replace("K:", " ").replace("TTC:", " ").split()
+            ) else "warn",
+            "summary": self._analysis_summary,
+        }
+        report_path = self.out_dir / "validation_report.json"
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(report, indent=2))
+        logging.info("Pipeline complete: plan + validation → %s", self.out_dir)
+        logging.info("For CARLA render: python -m carla_experiment_client.cli render --plan %s/plan.json",
+                     self.out_dir)
 
     # DocRef: technical_details.md#2.6
     def _analyze(self, _event: Any) -> None:
