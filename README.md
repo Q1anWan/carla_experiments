@@ -69,10 +69,23 @@ carla_experiment_client/
 │   │   ├── telemetry_schema.md       # Telemetry data schema
 │   │   ├── events_schema.md          # Event data schema
 │   │   └── coordinate_systems.md     # Coordinate system guide
-│   └── architecture.md               # System architecture
+│   ├── architecture.md               # System architecture
+│   ├── technical_details.md          # Editor & pipeline technical details
+│   ├── editor_manual.md              # Editor user manual
+│   ├── editor_test_checklist.md      # Manual test checklist (14 tests)
+│   ├── plan_validate_render_update.md # Pipeline update notes
+│   └── for_ai_agents.md             # AI agent onboarding guide
 │
-├── outputs/                          # Plan/validate/render outputs (new)
-└── runs/                             # Legacy scenario outputs
+├── outputs/                          # Plan/validate/render outputs
+│   ├── scene_designs/                # Pre-converted scene_edit.json per scenario
+│   │   ├── lane_change_cut_in/       #   scene_edit.json + comparison.png
+│   │   ├── unprotected_left_turn/
+│   │   ├── yield_to_emergency/
+│   │   ├── red_light_conflict/
+│   │   ├── pedestrian_emerge/
+│   │   └── highway_merge/
+│   └── <episode_id>/                 # Per-episode outputs
+└── runs/                             # Scenario execution outputs
 ```
 
 ## Quick Start
@@ -211,27 +224,58 @@ python run_scenario.py --scenario highway_merge --render-preset final
 
 **Note**: Trigger frame values are automatically scaled when using presets with different FPS. For example, `trigger_frame: 800` at 20fps becomes 400 at 10fps.
 
-## Interactive 2D Scene Editor (MVP)
+## Interactive 2D Scene Editor
 
 The interactive editor loads exported map centerlines and lets you edit multi-actor keyframes with a time slider, add events, visualize conflicts/feasibility, and export `scene_edit.json` plus replay-ready `plan.json/events_plan.json`.
 
 ```bash
-# Export map assets once
-python -m carla_experiment_client.planning.map_exporter --map Town05 --out data/maps
-
-# Launch the editor
-python -m carla_experiment_client.editor.interactive_editor \
+# Launch editor with a new scenario
+python -m carla_experiment_client.cli editor \
   --map-dir data/maps/Town05 \
-  --episode-id P1_T2_lane_change \
-  --out outputs
+  --episode-id my_scenario \
+  --duration 60
+
+# Load existing scene design
+python -m carla_experiment_client.cli editor \
+  --map-dir data/maps/Town05 \
+  --scene outputs/scene_designs/lane_change_cut_in/scene_edit.json \
+  --episode-id lane_change_cut_in
+
+# Headless export (no GUI)
+python -m carla_experiment_client.cli editor \
+  --map-dir data/maps/Town05 \
+  --scene outputs/scene_designs/lane_change_cut_in/scene_edit.json \
+  --episode-id lane_change_cut_in --headless
 ```
 
 Editor controls (buttons on the right panel):
 - Add/Move/Del keyframes (click/drag on the map)
+- Snap to lane centerlines (toggle with button or `s` key)
 - Time slider (bottom) to scrub trajectories
 - Add Event with `Event` + `Action` fields
-- Analyze (conflict + lane feasibility overlays)
+- Analyze (conflict, lane feasibility, kinematic, TTC overlays)
+- Undo/Redo (or `Ctrl+Z`/`Ctrl+Y`)
 - Save (scene_edit.json) and Export (plan.json/events_plan.json)
+
+Keyboard shortcuts: `a`=add, `m`=move, `d`=delete, `s`=snap, `e`=del-event, `space`=analyze, `r`=reset-view, `t`=keyframe-table, `h`=help, scroll=zoom
+
+### Scene Design Library
+
+Pre-converted scene designs from validated telemetry runs are available in `outputs/scene_designs/`:
+
+```
+outputs/scene_designs/
+├── lane_change_cut_in/
+│   ├── scene_edit.json      # Editable keyframe scene
+│   └── comparison.png       # Telemetry vs keyframe comparison
+├── unprotected_left_turn/
+├── yield_to_emergency/
+├── red_light_conflict/
+├── pedestrian_emerge/
+└── highway_merge/
+```
+
+Each `comparison.png` contains 3 panels: XY trajectory overlay, ego speed comparison, and keyframe interpolation error curve.
 
 ## Unified CLI (Interactive + Subcommands)
 
@@ -368,10 +412,12 @@ python -m py_compile carla_experiment_client/run_scenario.py
 ## For AI Agents
 
 See [docs/for_ai_agents.md](docs/for_ai_agents.md) for detailed reference including:
+- Complete project architecture and data flow
+- Scene design workflow (telemetry → scene_edit → editor → plan → render)
+- Data format specifications (scene_edit.json, plan.json, telemetry.json)
 - Spawn fallback issues and solutions
-- Frame scaling with render presets
 - Scenario-specific notes and config parameters
-- Telemetry analysis tips
+- Telemetry analysis and visualization tools
 - Debugging workflow
 
 ## License

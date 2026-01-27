@@ -44,6 +44,8 @@ class ActorState:
     ghost: Any = None
     conflict_scatter: Any = None
     infeasible_scatter: Any = None
+    ttc_scatter: Any = None
+    kinematic_scatter: Any = None
 
 
 @dataclass
@@ -106,6 +108,36 @@ class MapIndex:
                     best_lane = lane_id
         dist = math.sqrt(best_d2) if best_d2 is not None else float("inf")
         return dist, best_lane
+
+    def snap_to_centerline(self, x: float, y: float, *, max_radius: int = 6) -> Tuple[float, float, float]:
+        """Snap a point to the nearest lane centerline point.
+
+        Returns (snapped_x, snapped_y, distance) where distance is the snap offset.
+        """
+        best_d2: Optional[float] = None
+        best_x, best_y = x, y
+        cx, cy = self._cell(x, y)
+        for radius in range(max_radius + 1):
+            for dx in range(-radius, radius + 1):
+                for dy in range(-radius, radius + 1):
+                    points = self._cells.get((cx + dx, cy + dy))
+                    if not points:
+                        continue
+                    for px, py, _lane_id in points:
+                        d2 = (x - px) ** 2 + (y - py) ** 2
+                        if best_d2 is None or d2 < best_d2:
+                            best_d2 = d2
+                            best_x, best_y = px, py
+            if best_d2 is not None and radius >= 1:
+                break
+        if best_d2 is None:
+            for px, py, _lane_id in self._points:
+                d2 = (x - px) ** 2 + (y - py) ** 2
+                if best_d2 is None or d2 < best_d2:
+                    best_d2 = d2
+                    best_x, best_y = px, py
+        dist = math.sqrt(best_d2) if best_d2 is not None else 0.0
+        return best_x, best_y, dist
 
 
 def _load_geojson(path: Path) -> Dict[str, Any]:
@@ -446,16 +478,24 @@ class SceneEditor:
         self.mode = "move"
         self.dragging = False
         self._suppress_text = False
+        self.snap_enabled = False
+        self.show_ttc = True
+        self.show_kinematic = True
+        self._undo_stack: List[str] = []
+        self._redo_stack: List[str] = []
+        self._max_undo = 50
 
-        self.fig = plt.figure(figsize=(12, 9))
-        self.ax_map = self.fig.add_axes([0.05, 0.12, 0.72, 0.82])
-        self.ax_slider = self.fig.add_axes([0.05, 0.05, 0.72, 0.03])
-        self.ax_actor = self.fig.add_axes([0.80, 0.78, 0.18, 0.18])
+        self.fig = plt.figure(figsize=(14, 10))
+        self.ax_map = self.fig.add_axes([0.05, 0.10, 0.65, 0.85])
+        self.ax_slider = self.fig.add_axes([0.05, 0.04, 0.65, 0.025])
+        self.ax_actor = self.fig.add_axes([0.72, 0.88, 0.26, 0.10])
         self.ax_buttons = []
+        self._buttons = []
         self._build_ui()
         self._plot_map()
         self._refresh_actor_radio()
         self._draw_all_actors()
+        self._reset_view(None)  # Reset view to show all actors
         self._update_event_markers()
         self._update_time_marker(self.time_slider.val)
         self._connect_events()
@@ -470,39 +510,104 @@ class SceneEditor:
         )
         self.time_slider.on_changed(self._update_time_marker)
 
-        button_specs = [
+        btn_h = 0.032
+        btn_gap = 0.035
+        col1_x = 0.72
+        col2_x = 0.86
+        btn_w = 0.12
+
+        left_buttons = [
             ("Add KF", self._set_mode_add),
             ("Move KF", self._set_mode_move),
             ("Del KF", self._set_mode_delete),
-            ("Add Event", self._add_event),
+            ("Snap", self._toggle_snap),
             ("Analyze", self._analyze),
             ("Save", self._save_scene_action),
-            ("Export", self._export_action),
-            ("Add Actor", self._add_actor),
-            ("Del Actor", self._delete_actor),
         ]
-        y = 0.70
-        for label, callback in button_specs:
-            ax = self.fig.add_axes([0.80, y, 0.18, 0.04])
+        right_buttons = [
+            ("AddEvt", self._add_event),
+            ("DelEvt", self._delete_event_btn),
+            ("Undo", self._undo),
+            ("Redo", self._redo),
+            ("Export", self._export_action),
+            ("Reset", self._reset_view),
+        ]
+
+        y = 0.78
+        for label, callback in left_buttons:
+            ax = self.fig.add_axes([col1_x, y, btn_w, btn_h])
             btn = Button(ax, label)
             btn.on_clicked(callback)
+            self._buttons.append(btn)
             self.ax_buttons.append(ax)
-            y -= 0.045
+            y -= btn_gap
 
-        ax_event_type = self.fig.add_axes([0.80, 0.28, 0.18, 0.035])
+        y = 0.78
+        for label, callback in right_buttons:
+            ax = self.fig.add_axes([col2_x, y, btn_w, btn_h])
+            btn = Button(ax, label)
+            btn.on_clicked(callback)
+            self._buttons.append(btn)
+            self.ax_buttons.append(ax)
+            y -= btn_gap
+
+        input_y = 0.54
+        input_h = 0.028
+        input_gap = 0.035
+
+        ax_event_type = self.fig.add_axes([col1_x, input_y, 0.26, input_h])
         self.event_type_box = TextBox(ax_event_type, "Event", initial="lane_change")
-        ax_event_action = self.fig.add_axes([0.80, 0.23, 0.18, 0.035])
-        self.event_action_box = TextBox(ax_event_action, "Action", initial="lane_change")
+        input_y -= input_gap
 
-        ax_kf_time = self.fig.add_axes([0.80, 0.18, 0.18, 0.035])
+        ax_event_action = self.fig.add_axes([col1_x, input_y, 0.26, input_h])
+        self.event_action_box = TextBox(ax_event_action, "Action", initial="lane_change")
+        input_y -= input_gap
+
+        ax_kf_time = self.fig.add_axes([col1_x, input_y, 0.26, input_h])
         self.kf_time_box = TextBox(ax_kf_time, "KF t", initial="")
         self.kf_time_box.on_submit(self._update_selected_time)
-        ax_kf_speed = self.fig.add_axes([0.80, 0.13, 0.18, 0.035])
+        input_y -= input_gap
+
+        ax_kf_speed = self.fig.add_axes([col1_x, input_y, 0.26, input_h])
         self.kf_speed_box = TextBox(ax_kf_speed, "KF v", initial="")
         self.kf_speed_box.on_submit(self._update_selected_speed)
+        input_y -= input_gap
 
-        ax_new_actor = self.fig.add_axes([0.80, 0.08, 0.18, 0.035])
-        self.new_actor_box = TextBox(ax_new_actor, "New actor", initial="npc1,vehicle,npc")
+        ax_new_actor = self.fig.add_axes([col1_x, input_y, 0.26, input_h])
+        self.new_actor_box = TextBox(ax_new_actor, "Actor", initial="npc1,vehicle,npc")
+        input_y -= input_gap
+
+        actor_btn_y = input_y
+        ax_add_actor = self.fig.add_axes([col1_x, actor_btn_y, btn_w, btn_h])
+        btn_add_actor = Button(ax_add_actor, "Add Actor")
+        btn_add_actor.on_clicked(self._add_actor)
+        self._buttons.append(btn_add_actor)
+
+        ax_del_actor = self.fig.add_axes([col2_x, actor_btn_y, btn_w, btn_h])
+        btn_del_actor = Button(ax_del_actor, "Del Actor")
+        btn_del_actor.on_clicked(self._delete_actor)
+        self._buttons.append(btn_del_actor)
+
+        self.ax_status = self.fig.add_axes([0.05, 0.005, 0.65, 0.025])
+        self.ax_status.set_axis_off()
+        self.status_text = self.ax_status.text(
+            0.0, 0.5,
+            "Mode: move | Snap: OFF | Keys: a/m/d=mode s=snap space=analyze t=table h=help",
+            fontsize=8, va="center", ha="left", family="monospace"
+        )
+
+    def _delete_event_btn(self, _event: Any) -> None:
+        """Button callback to delete nearest event at current slider time."""
+        t = float(self.time_slider.val)
+        if not self._delete_nearest_event(t, tolerance_s=2.0):
+            logging.info("No event near t=%.2fs to delete", t)
+
+    def _update_status(self) -> None:
+        snap_str = "ON" if self.snap_enabled else "OFF"
+        self.status_text.set_text(
+            f"Mode: {self.mode} | Snap: {snap_str} | Keys: a/m/d=mode s=snap space=analyze t=table h=help"
+        )
+        self.fig.canvas.draw_idle()
 
     def _plot_map(self) -> None:
         for feature in self.junction_geo.get("features", []):
@@ -549,13 +654,16 @@ class SceneEditor:
 
     def _draw_all_actors(self) -> None:
         colors = ["#d1495b", "#6b9080", "#577590", "#bc4749", "#386641"]
+        logging.info("Drawing %d actors", len(self.scene.actors))
         for idx, actor in enumerate(self.scene.actors):
             actor.color = colors[idx % len(colors)]
+            logging.info("  Drawing actor %s with color %s, %d keyframes", actor.actor_id, actor.color, len(actor.keyframes))
             self._draw_actor(actor)
 
     def _draw_actor(self, actor: ActorState) -> None:
         xs = [k.x for k in actor.keyframes]
         ys = [k.y for k in actor.keyframes]
+        logging.debug("  Actor %s: xs=%s, ys=%s", actor.actor_id, xs[:3], ys[:3])
         offsets = _as_offsets(list(zip(xs, ys)))
         if actor.line is None:
             actor.line, = self.ax_map.plot(xs, ys, color=actor.color, linewidth=1.8, alpha=0.9)
@@ -582,11 +690,13 @@ class SceneEditor:
             self.kf_time_box.set_val("")
             self.kf_speed_box.set_val("")
             self._suppress_text = False
+            self.fig.canvas.draw_idle()
             return
         actor_id, index = self.selected_keyframe
         actor = self._actor_by_id(actor_id)
         if actor is None or index >= len(actor.keyframes):
             self.selected_marker.set_offsets(np.empty((0, 2)))
+            self.fig.canvas.draw_idle()
             return
         kf = actor.keyframes[index]
         self.selected_marker.set_offsets([[kf.x, kf.y]])
@@ -594,15 +704,147 @@ class SceneEditor:
         self.kf_time_box.set_val(f"{kf.t:.2f}")
         self.kf_speed_box.set_val("" if kf.v is None else f"{kf.v:.2f}")
         self._suppress_text = False
+        self.fig.canvas.draw_idle()
 
     def _set_mode_add(self, _event: Any) -> None:
         self.mode = "add"
+        self._update_status()
 
     def _set_mode_move(self, _event: Any) -> None:
         self.mode = "move"
+        self._update_status()
 
     def _set_mode_delete(self, _event: Any) -> None:
         self.mode = "delete"
+        self._update_status()
+
+    def _toggle_snap(self, _event: Any) -> None:
+        self.snap_enabled = not self.snap_enabled
+        status = "ON" if self.snap_enabled else "OFF"
+        logging.info("Snap to centerline: %s", status)
+        self._update_status()
+
+    def _push_undo(self) -> None:
+        """Save current state to undo stack."""
+        state = json.dumps(self._scene_to_dict())
+        self._undo_stack.append(state)
+        if len(self._undo_stack) > self._max_undo:
+            self._undo_stack.pop(0)
+        self._redo_stack.clear()
+
+    def _scene_to_dict(self) -> Dict[str, Any]:
+        """Serialize scene state for undo/redo."""
+        return {
+            "actors": [
+                {
+                    "id": actor.actor_id,
+                    "kind": actor.kind,
+                    "role": actor.role,
+                    "blueprint": actor.blueprint,
+                    "controller": actor.controller,
+                    "color": actor.color,
+                    "keyframes": [{"t": k.t, "x": k.x, "y": k.y, "v": k.v} for k in actor.keyframes],
+                }
+                for actor in self.scene.actors
+            ],
+            "events": [
+                {
+                    "t_event": e.t_event,
+                    "event_type": e.event_type,
+                    "expected_action": e.expected_action,
+                    "audio_id": e.audio_id,
+                    "t_voice_start": e.t_voice_start,
+                    "t_robot_precue": e.t_robot_precue,
+                }
+                for e in self.scene.events
+            ],
+        }
+
+    def _clear_actor_artists(self) -> None:
+        """Remove all matplotlib artists for actors."""
+        for actor in self.scene.actors:
+            if actor.line is not None:
+                actor.line.remove()
+                actor.line = None
+            if actor.scatter is not None:
+                actor.scatter.remove()
+                actor.scatter = None
+            if actor.ghost is not None:
+                actor.ghost.remove()
+                actor.ghost = None
+            if actor.conflict_scatter is not None:
+                actor.conflict_scatter.remove()
+                actor.conflict_scatter = None
+            if actor.infeasible_scatter is not None:
+                actor.infeasible_scatter.remove()
+                actor.infeasible_scatter = None
+            if actor.ttc_scatter is not None:
+                actor.ttc_scatter.remove()
+                actor.ttc_scatter = None
+            if actor.kinematic_scatter is not None:
+                actor.kinematic_scatter.remove()
+                actor.kinematic_scatter = None
+
+    def _restore_from_dict(self, data: Dict[str, Any]) -> None:
+        """Restore scene state from dict."""
+        self._clear_actor_artists()
+        self.scene.actors = []
+        for item in data.get("actors", []):
+            keyframes = [
+                Keyframe(t=k["t"], x=k["x"], y=k["y"], v=k.get("v"))
+                for k in item.get("keyframes", [])
+            ]
+            actor = ActorState(
+                actor_id=str(item.get("id", "actor")),
+                kind=str(item.get("kind", "vehicle")),
+                role=str(item.get("role", "")),
+                blueprint=str(item.get("blueprint", "")),
+                controller=str(item.get("controller", "teleport")),
+                keyframes=keyframes,
+                color=str(item.get("color", "#6b9080")),
+            )
+            self.scene.actors.append(actor)
+        self.scene.events = []
+        for item in data.get("events", []):
+            self.scene.events.append(
+                EventMarker(
+                    t_event=float(item.get("t_event", 0.0)),
+                    event_type=str(item.get("event_type", "")),
+                    expected_action=str(item.get("expected_action", "")),
+                    audio_id=item.get("audio_id"),
+                    t_voice_start=item.get("t_voice_start"),
+                    t_robot_precue=item.get("t_robot_precue"),
+                )
+            )
+        if self.scene.actors:
+            self.active_actor_id = self.scene.actors[0].actor_id
+        self.selected_keyframe = None
+
+    def _undo(self, _event: Any) -> None:
+        if not self._undo_stack:
+            logging.info("Nothing to undo")
+            return
+        current = json.dumps(self._scene_to_dict())
+        self._redo_stack.append(current)
+        state = self._undo_stack.pop()
+        self._restore_from_dict(json.loads(state))
+        self._refresh_actor_radio()
+        self._draw_all_actors()
+        self._update_actor_artists()
+        logging.info("Undo applied")
+
+    def _redo(self, _event: Any) -> None:
+        if not self._redo_stack:
+            logging.info("Nothing to redo")
+            return
+        current = json.dumps(self._scene_to_dict())
+        self._undo_stack.append(current)
+        state = self._redo_stack.pop()
+        self._restore_from_dict(json.loads(state))
+        self._refresh_actor_radio()
+        self._draw_all_actors()
+        self._update_actor_artists()
+        logging.info("Redo applied")
 
     def _on_actor_select(self, label: str) -> None:
         self.active_actor_id = label
@@ -661,9 +903,19 @@ class SceneEditor:
         actor_id, kind, role = parts[:3]
         if any(actor.actor_id == actor_id for actor in self.scene.actors):
             return
-        keyframes = _default_keyframes_from_map(self.map_graph, self.scene.duration)
-        if not keyframes:
-            keyframes = [Keyframe(t=0.0, x=0.0, y=0.0), Keyframe(t=self.scene.duration, x=5.0, y=0.0)]
+        ego = self._actor_by_id("ego")
+        if ego and ego.keyframes:
+            start_kf = ego.keyframes[0]
+            end_kf = ego.keyframes[-1]
+            offset_y = 4.0 if kind == "vehicle" else 2.0
+            keyframes = [
+                Keyframe(t=0.0, x=start_kf.x, y=start_kf.y + offset_y),
+                Keyframe(t=self.scene.duration, x=end_kf.x, y=end_kf.y + offset_y),
+            ]
+        else:
+            keyframes = _default_keyframes_from_map(self.map_graph, self.scene.duration)
+            if not keyframes:
+                keyframes = [Keyframe(t=0.0, x=0.0, y=0.0), Keyframe(t=self.scene.duration, x=50.0, y=0.0)]
         actor = ActorState(
             actor_id=actor_id,
             kind=kind,
@@ -675,7 +927,11 @@ class SceneEditor:
         self.scene.actors.append(actor)
         self.active_actor_id = actor_id
         self._refresh_actor_radio()
+        self._draw_all_actors()
         self._update_actor_artists()
+        self.mode = "add"
+        self._update_status()
+        logging.info("Added actor '%s'. Switch to Add KF mode. Click on map to add keyframes.", actor_id)
 
     def _delete_actor(self, _event: Any) -> None:
         if not self.active_actor_id or self.active_actor_id == "ego":
@@ -686,6 +942,7 @@ class SceneEditor:
         self._update_actor_artists()
 
     def _add_event(self, _event: Any) -> None:
+        self._push_undo()
         event_type = self._textbox_value(self.event_type_box).strip() or "event"
         expected_action = self._textbox_value(self.event_action_box).strip() or event_type
         t_event = float(self.time_slider.val)
@@ -696,7 +953,28 @@ class SceneEditor:
                 expected_action=expected_action,
             )
         )
+        self.scene.events.sort(key=lambda e: e.t_event)
+        logging.info("Added event '%s' at t=%.2fs", event_type, t_event)
         self._update_event_markers()
+
+    def _delete_nearest_event(self, t: float, tolerance_s: float = 1.0) -> bool:
+        """Delete the event nearest to time t within tolerance."""
+        if not self.scene.events:
+            return False
+        best_idx = None
+        best_dt = tolerance_s
+        for idx, event in enumerate(self.scene.events):
+            dt = abs(event.t_event - t)
+            if dt < best_dt:
+                best_dt = dt
+                best_idx = idx
+        if best_idx is not None:
+            self._push_undo()
+            removed = self.scene.events.pop(best_idx)
+            logging.info("Deleted event '%s' at t=%.2fs", removed.event_type, removed.t_event)
+            self._update_event_markers()
+            return True
+        return False
 
     def _update_event_markers(self) -> None:
         ego = self._actor_by_id("ego")
@@ -734,6 +1012,7 @@ class SceneEditor:
         if actor is None:
             return
         if self.mode == "add":
+            self._push_undo()
             t = float(self.time_slider.val)
             v = None
             text = self._textbox_value(self.kf_speed_box).strip()
@@ -742,7 +1021,13 @@ class SceneEditor:
                     v = float(text)
                 except ValueError:
                     v = None
-            new_kf = Keyframe(t=t, x=event.xdata, y=event.ydata, v=v)
+            kf_x, kf_y = event.xdata, event.ydata
+            if self.snap_enabled and self.map_index is not None:
+                snap_x, snap_y, snap_dist = self.map_index.snap_to_centerline(kf_x, kf_y)
+                if snap_dist < 10.0:
+                    kf_x, kf_y = snap_x, snap_y
+                    logging.info("Snapped keyframe to centerline (offset: %.2fm)", snap_dist)
+            new_kf = Keyframe(t=t, x=kf_x, y=kf_y, v=v)
             actor.keyframes.append(new_kf)
             actor.keyframes.sort(key=lambda k: k.t)
             self.selected_keyframe = (actor.actor_id, actor.keyframes.index(new_kf))
@@ -754,11 +1039,13 @@ class SceneEditor:
             self._update_selected_marker()
             return
         if self.mode == "delete":
+            self._push_undo()
             actor.keyframes.pop(idx)
             self.selected_keyframe = None
             self._update_actor_artists()
             return
         if self.mode == "move":
+            self._push_undo()
             self.selected_keyframe = (actor.actor_id, idx)
             self.dragging = True
             self._update_selected_marker()
@@ -770,8 +1057,13 @@ class SceneEditor:
         actor = self._actor_by_id(actor_id)
         if actor is None or index >= len(actor.keyframes):
             return
-        actor.keyframes[index].x = float(event.xdata)
-        actor.keyframes[index].y = float(event.ydata)
+        kf_x, kf_y = float(event.xdata), float(event.ydata)
+        if self.snap_enabled and self.map_index is not None:
+            snap_x, snap_y, snap_dist = self.map_index.snap_to_centerline(kf_x, kf_y)
+            if snap_dist < 10.0:
+                kf_x, kf_y = snap_x, snap_y
+        actor.keyframes[index].x = kf_x
+        actor.keyframes[index].y = kf_y
         self._update_actor_artists()
 
     def _on_release(self, _event: Any) -> None:
@@ -781,6 +1073,130 @@ class SceneEditor:
         self.fig.canvas.mpl_connect("button_press_event", self._on_press)
         self.fig.canvas.mpl_connect("motion_notify_event", self._on_motion)
         self.fig.canvas.mpl_connect("button_release_event", self._on_release)
+        self.fig.canvas.mpl_connect("key_press_event", self._on_key_press)
+        self.fig.canvas.mpl_connect("scroll_event", self._on_scroll)
+
+    def _on_key_press(self, event: Any) -> None:
+        """Handle keyboard shortcuts."""
+        if event.key == "a":
+            self._set_mode_add(None)
+            logging.info("Mode: Add keyframe")
+        elif event.key == "m":
+            self._set_mode_move(None)
+            logging.info("Mode: Move keyframe")
+        elif event.key == "d":
+            self._set_mode_delete(None)
+            logging.info("Mode: Delete keyframe")
+        elif event.key == "s":
+            self._toggle_snap(None)
+        elif event.key == "e":
+            t = float(self.time_slider.val)
+            if not self._delete_nearest_event(t):
+                logging.info("No event near t=%.2fs to delete", t)
+        elif event.key == "ctrl+z":
+            self._undo(None)
+        elif event.key == "ctrl+y" or event.key == "ctrl+shift+z":
+            self._redo(None)
+        elif event.key == "ctrl+s":
+            self._save_scene_action(None)
+        elif event.key == "ctrl+e":
+            self._export_action(None)
+        elif event.key == "space" or event.key == " ":
+            logging.info("Running analysis...")
+            self._analyze(None)
+        elif event.key == "r":
+            self._reset_view(None)
+        elif event.key == "h":
+            self._show_help()
+        elif event.key == "t":
+            self._show_keyframe_table()
+        elif event.key == "delete" or event.key == "backspace":
+            if self.selected_keyframe is not None:
+                actor_id, idx = self.selected_keyframe
+                actor = self._actor_by_id(actor_id)
+                if actor and idx < len(actor.keyframes):
+                    self._push_undo()
+                    actor.keyframes.pop(idx)
+                    self.selected_keyframe = None
+                    self._update_actor_artists()
+
+    def _show_help(self) -> None:
+        """Print keyboard shortcuts to console."""
+        help_text = """
+=== Interactive Editor Keyboard Shortcuts ===
+  a         - Add keyframe mode
+  m         - Move keyframe mode
+  d         - Delete keyframe mode
+  s         - Toggle snap to centerline
+  e         - Delete nearest event at current time
+  space     - Run analysis (conflicts, kinematic, TTC)
+  r         - Reset view to fit all actors
+  t         - Show keyframe table
+  h         - Show this help
+  Delete    - Delete selected keyframe
+  Ctrl+Z    - Undo
+  Ctrl+Y    - Redo
+  Ctrl+S    - Save scene
+  Ctrl+E    - Export plan.json
+  Scroll    - Zoom in/out
+=========================================="""
+        print(help_text)
+        logging.info("Help printed to console")
+
+    def _show_keyframe_table(self) -> None:
+        """Print keyframe table to console for quick editing reference."""
+        print("\n" + "=" * 70)
+        print("KEYFRAME TABLE")
+        print("=" * 70)
+        for actor in self.scene.actors:
+            print(f"\n[{actor.actor_id}] ({actor.kind}, {actor.role})")
+            print("-" * 50)
+            print(f"{'Idx':<4} {'Time(s)':<10} {'X':<12} {'Y':<12} {'V(m/s)':<10}")
+            print("-" * 50)
+            for idx, kf in enumerate(actor.keyframes):
+                v_str = f"{kf.v:.2f}" if kf.v is not None else "-"
+                print(f"{idx:<4} {kf.t:<10.2f} {kf.x:<12.2f} {kf.y:<12.2f} {v_str:<10}")
+        print("\n" + "=" * 70)
+        print("Events:")
+        print("-" * 50)
+        if self.scene.events:
+            for idx, evt in enumerate(self.scene.events):
+                print(f"  {idx}: t={evt.t_event:.2f}s  type={evt.event_type}  action={evt.expected_action}")
+        else:
+            print("  (no events)")
+        print("=" * 70 + "\n")
+        logging.info("Keyframe table printed to console")
+
+    def _on_scroll(self, event: Any) -> None:
+        """Handle mouse scroll for zooming."""
+        if event.inaxes != self.ax_map:
+            return
+        scale = 1.15 if event.button == "down" else 1 / 1.15
+        xlim = self.ax_map.get_xlim()
+        ylim = self.ax_map.get_ylim()
+        xc = event.xdata
+        yc = event.ydata
+        new_xlim = [xc + (x - xc) * scale for x in xlim]
+        new_ylim = [yc + (y - yc) * scale for y in ylim]
+        self.ax_map.set_xlim(new_xlim)
+        self.ax_map.set_ylim(new_ylim)
+        self.fig.canvas.draw_idle()
+
+    def _reset_view(self, _event: Any) -> None:
+        """Reset map view to show all actors."""
+        all_x = []
+        all_y = []
+        for actor in self.scene.actors:
+            for kf in actor.keyframes:
+                all_x.append(kf.x)
+                all_y.append(kf.y)
+        if not all_x:
+            return
+        margin = 50
+        self.ax_map.set_xlim(min(all_x) - margin, max(all_x) + margin)
+        self.ax_map.set_ylim(min(all_y) - margin, max(all_y) + margin)
+        self.fig.canvas.draw_idle()
+        logging.info("View reset to fit all actors")
 
     def _save_scene_action(self, _event: Any) -> None:
         _save_scene(self.scene, self.scene_path)
@@ -808,16 +1224,51 @@ class SceneEditor:
         )
         conflict_points: Dict[str, List[Tuple[float, float]]] = {a.actor_id: [] for a in plan.actors}
         infeasible_points: Dict[str, List[Tuple[float, float]]] = {a.actor_id: [] for a in plan.actors}
+        kinematic_points: Dict[str, List[Tuple[float, float]]] = {a.actor_id: [] for a in plan.actors}
+        ttc_points: Dict[str, List[Tuple[float, float, float]]] = {a.actor_id: [] for a in plan.actors}
 
         trajectories = {a.actor_id: a.trajectory for a in plan.actors}
         actor_ids = list(trajectories.keys())
         total_frames = min((len(traj) for traj in trajectories.values()), default=0)
 
+        max_speed_mps = 30.0
+        max_accel_mps2 = 8.0
+        max_decel_mps2 = 10.0
+        max_lat_accel_mps2 = 5.0
+        ttc_warning_s = 3.0
+
+        for actor_plan in plan.actors:
+            traj = actor_plan.trajectory
+            for idx, point in enumerate(traj):
+                if abs(point.v) > max_speed_mps:
+                    kinematic_points[actor_plan.actor_id].append((point.x, point.y))
+                if point.a > max_accel_mps2 or point.a < -max_decel_mps2:
+                    kinematic_points[actor_plan.actor_id].append((point.x, point.y))
+                if idx > 0 and idx < len(traj) - 1:
+                    prev_pt = traj[idx - 1]
+                    next_pt = traj[idx + 1]
+                    dx1 = point.x - prev_pt.x
+                    dy1 = point.y - prev_pt.y
+                    dx2 = next_pt.x - point.x
+                    dy2 = next_pt.y - point.y
+                    cross = dx1 * dy2 - dy1 * dx2
+                    ds1 = math.sqrt(dx1 * dx1 + dy1 * dy1)
+                    ds2 = math.sqrt(dx2 * dx2 + dy2 * dy2)
+                    if ds1 > 0.01 and ds2 > 0.01:
+                        curvature = abs(cross) / (ds1 * ds2 * max(ds1, ds2))
+                        v = max(0.1, abs(point.v))
+                        lat_accel = curvature * v * v
+                        if lat_accel > max_lat_accel_mps2:
+                            kinematic_points[actor_plan.actor_id].append((point.x, point.y))
+
         for frame in range(total_frames):
             positions = {}
+            velocities = {}
             for actor_id, traj in trajectories.items():
                 point = traj[frame]
                 positions[actor_id] = point
+                yaw_rad = math.radians(point.yaw)
+                velocities[actor_id] = (point.v * math.cos(yaw_rad), point.v * math.sin(yaw_rad))
                 if self.map_index is not None:
                     dist, _ = self.map_index.nearest_lane(point.x, point.y)
                     threshold = self.vehicle_lane_threshold_m
@@ -837,21 +1288,59 @@ class SceneEditor:
                         continue
                     dx = pa.x - pb.x
                     dy = pa.y - pb.y
-                    if math.sqrt(dx * dx + dy * dy) < self.conflict_threshold_m:
+                    dist = math.sqrt(dx * dx + dy * dy)
+                    if dist < self.conflict_threshold_m:
                         conflict_points[a_id].append((pa.x, pa.y))
                         conflict_points[b_id].append((pb.x, pb.y))
+                    va = velocities.get(a_id, (0, 0))
+                    vb = velocities.get(b_id, (0, 0))
+                    dvx = va[0] - vb[0]
+                    dvy = va[1] - vb[1]
+                    rel_v_sq = dvx * dvx + dvy * dvy
+                    if rel_v_sq > 0.01 and dist > self.conflict_threshold_m:
+                        approach = -(dx * dvx + dy * dvy)
+                        if approach > 0:
+                            ttc = dist / math.sqrt(rel_v_sq)
+                            if ttc < ttc_warning_s:
+                                ttc_points[a_id].append((pa.x, pa.y, ttc))
+                                ttc_points[b_id].append((pb.x, pb.y, ttc))
+
+        n_conflicts = sum(len(v) for v in conflict_points.values())
+        n_infeasible = sum(len(v) for v in infeasible_points.values())
+        n_kinematic = sum(len(v) for v in kinematic_points.values())
+        n_ttc = sum(len(v) for v in ttc_points.values())
 
         for actor in self.scene.actors:
             if actor.conflict_scatter is None:
-                actor.conflict_scatter = self.ax_map.scatter([], [], s=20, color="#e63946", alpha=0.8)
+                actor.conflict_scatter = self.ax_map.scatter([], [], s=20, color="#e63946", alpha=0.8, label="Conflict")
             if actor.infeasible_scatter is None:
-                actor.infeasible_scatter = self.ax_map.scatter([], [], s=18, color="#f6bd60", alpha=0.8)
+                actor.infeasible_scatter = self.ax_map.scatter([], [], s=18, color="#f6bd60", alpha=0.8, label="Off-lane")
+            if actor.kinematic_scatter is None:
+                actor.kinematic_scatter = self.ax_map.scatter([], [], s=16, color="#9d4edd", alpha=0.7, marker="^", label="Kinematic")
+            if actor.ttc_scatter is None:
+                actor.ttc_scatter = self.ax_map.scatter([], [], s=22, color="#ff006e", alpha=0.6, marker="x", label="TTC")
             actor.conflict_scatter.set_offsets(_as_offsets(conflict_points.get(actor.actor_id, [])))
             actor.infeasible_scatter.set_offsets(_as_offsets(infeasible_points.get(actor.actor_id, [])))
-        logging.info("Analysis complete. Conflicts: %d", sum(len(v) for v in conflict_points.values()))
+            kinematic_pts = kinematic_points.get(actor.actor_id, [])
+            actor.kinematic_scatter.set_offsets(_as_offsets(kinematic_pts) if self.show_kinematic else np.empty((0, 2)))
+            ttc_pts = [(p[0], p[1]) for p in ttc_points.get(actor.actor_id, [])]
+            actor.ttc_scatter.set_offsets(_as_offsets(ttc_pts) if self.show_ttc else np.empty((0, 2)))
+
+        logging.info(
+            "Analysis: conflicts=%d, off-lane=%d, kinematic=%d, TTC warnings=%d",
+            n_conflicts, n_infeasible, n_kinematic, n_ttc
+        )
         self.fig.canvas.draw_idle()
 
     def run(self) -> None:
+        logging.info("Starting GUI with %d actors:", len(self.scene.actors))
+        for actor in self.scene.actors:
+            logging.info("  - %s: %d keyframes, line=%s, scatter=%s",
+                        actor.actor_id, len(actor.keyframes),
+                        actor.line is not None, actor.scatter is not None)
+        xlim = self.ax_map.get_xlim()
+        ylim = self.ax_map.get_ylim()
+        logging.info("View bounds: x=[%.1f, %.1f], y=[%.1f, %.1f]", xlim[0], xlim[1], ylim[0], ylim[1])
         plt.show()
 
 

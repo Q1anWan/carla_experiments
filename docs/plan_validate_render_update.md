@@ -91,9 +91,101 @@ python -m carla_experiment_client.cli editor --map-dir data/maps/Town05 --episod
 
 ## Current Limitations (MVP)
 
-- Editor does not yet snap to lane centerlines or enforce kinematic limits.
 - Replay uses teleport follower (no tracking controller for ego yet).
-- Validation is basic; collision/TTC/jerk checks are not implemented yet.
+- Validation is basic; TTC checks run in editor only (not validator).
+
+## Enhanced Editor Features
+
+The interactive editor now includes:
+
+**Lane Snapping**
+- Toggle snap mode with `Snap` button or `s` key
+- Keyframes automatically snap to nearest lane centerline when enabled
+
+**Kinematic Analysis**
+- Speed limit check (default: 30 m/s)
+- Acceleration/deceleration limits (default: 8/-10 m/s²)
+- Lateral acceleration / curvature check (default: 5 m/s²)
+- Violations shown as purple triangles on map
+
+**TTC Visualization**
+- Time-to-collision warnings (default: < 3s)
+- Shown as pink X markers on map
+
+**Undo/Redo**
+- Full undo/redo stack (up to 50 states)
+- `Ctrl+Z` / `Ctrl+Y` or `Undo`/`Redo` buttons
+
+**Keyboard Shortcuts**
+- `a` - Add keyframe mode
+- `m` - Move keyframe mode
+- `d` - Delete keyframe mode
+- `s` - Toggle snap to centerline
+- `e` - Delete nearest event at current time
+- `space` - Run analysis
+- `r` - Reset view to fit all actors
+- `h` - Show help in console
+- `Delete` - Delete selected keyframe
+- `Ctrl+Z/Y` - Undo/Redo
+- `Ctrl+S` - Save scene
+- `Ctrl+E` - Export plan
+- `Scroll` - Zoom in/out
+
+**Status Bar**
+- Shows current mode and snap state
+- Quick reference for keyboard shortcuts
+
+## Scene Design Library
+
+Pre-converted scene designs from validated telemetry runs are available in `outputs/scene_designs/`:
+
+```
+outputs/scene_designs/
+├── lane_change_cut_in/
+│   ├── scene_edit.json      # Editable keyframe scene
+│   └── comparison.png       # Telemetry vs keyframe comparison
+├── unprotected_left_turn/
+├── yield_to_emergency/
+├── red_light_conflict/
+├── pedestrian_emerge/
+└── highway_merge/
+```
+
+### Conversion Workflow
+
+Scene designs were created by converting validated telemetry runs (`runs/final_fix_validation/`) to editor-compatible `scene_edit.json` format:
+
+1. Extract ego trajectory from `telemetry.csv` (world_x, world_y, speed columns)
+2. Identify key NPC actors from `telemetry.json` by role_name and distance to ego
+3. Sample keyframes at regular intervals (every 10s for ego, key moments for NPCs)
+4. Preserve events from original `events.json`
+5. Validate against original telemetry with `comparison.png`
+
+### Comparison Visualizations
+
+Each `comparison.png` contains 3 panels:
+- **Left**: XY trajectory overlay (solid = CSV telemetry, dashed = keyframe interpolation)
+- **Center**: Ego speed comparison with event markers
+- **Right**: Position interpolation error curve with mean/max statistics
+
+Interpolation error statistics:
+
+| Scenario | Mean Error | Max Error |
+|----------|-----------|-----------|
+| lane_change_cut_in | 1.26m | 5.63m |
+| unprotected_left_turn | 2.27m | 8.28m |
+| yield_to_emergency | 1.60m | 5.18m |
+| red_light_conflict | 1.13m | 7.76m |
+| pedestrian_emerge | 2.56m | 10.49m |
+| highway_merge | 1.56m | 6.67m |
+
+Errors are due to linear interpolation at curves; spline interpolation would reduce them.
+
+## Editor Bug Fixes
+
+- **View reset on load**: Editor now calls `_reset_view()` after loading actors, ensuring all trajectories are visible immediately instead of showing only a zoomed-in portion.
+- **Keyframe table**: Press `t` to print a formatted keyframe table to the console for debugging.
+- **Duplicate actor IDs**: Converted scenes from telemetry fixed duplicate "autopilot" actor IDs by appending `_2`, `_3` suffixes.
 
 ## Related Config Changes
 

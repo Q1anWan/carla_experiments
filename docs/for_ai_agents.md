@@ -70,6 +70,74 @@ scenarios/<scenario_id>/
 └── README.md         # Scenario documentation
 ```
 
+## Scene Design Workflow
+
+### Data Flow: Telemetry → Editor → Render
+
+The scene design workflow converts validated telemetry into editable scenes:
+
+```
+runs/final_fix_validation/<scenario>/    # Original validated runs
+├── telemetry.json                       # Ego + NPC per-frame data
+├── telemetry.csv                        # Ego tabular (23 columns)
+└── events.json                          # Detected events
+
+    ↓ (conversion)
+
+outputs/scene_designs/<scenario>/        # Editor-compatible designs
+├── scene_edit.json                      # Sparse keyframe scene
+└── comparison.png                       # Telemetry vs keyframe validation
+
+    ↓ (editor export)
+
+outputs/<episode_id>/                    # Pipeline outputs
+├── plan.json                            # Dense trajectory @ 50Hz
+├── events_plan.json                     # Event list
+├── validation_report.json               # Constraint checks
+├── master_video.mp4                     # Rendered video
+├── telemetry.json / .csv                # Recorded telemetry
+└── events.json                          # Final events
+```
+
+### Pre-Built Scene Designs
+
+Six scenarios have been converted to `scene_edit.json` format in `outputs/scene_designs/`:
+
+| Scenario | Map | Actors | Key Events |
+|----------|-----|--------|------------|
+| lane_change_cut_in | Town05 | ego + cut_in_vehicle + autopilot | vehicle_cut_in |
+| unprotected_left_turn | Town03 | ego + oncoming + autopilot×2 | yield_left_turn |
+| yield_to_emergency | Town04 | ego + emergency + autopilot | yield_to_emergency |
+| red_light_conflict | Town03 | ego + cross_traffic + autopilot×2 | stop_for_red_light |
+| pedestrian_emerge | Town05 | ego + walker + autopilot | avoid_pedestrian |
+| highway_merge | Town04 | ego + merge_vehicle + autopilot | vehicle_cut_in |
+
+### Loading Scene Designs in Editor
+
+```bash
+# Load pre-built scene for editing
+python -m carla_experiment_client.cli editor \
+    --map-dir data/maps/Town05 \
+    --scene outputs/scene_designs/lane_change_cut_in/scene_edit.json \
+    --episode-id lane_change_cut_in
+
+# Headless export (no GUI, generates plan.json)
+python -m carla_experiment_client.cli editor \
+    --map-dir data/maps/Town05 \
+    --scene outputs/scene_designs/lane_change_cut_in/scene_edit.json \
+    --episode-id lane_change_cut_in --headless
+```
+
+### Validation: Comparing Keyframes to Telemetry
+
+Each `comparison.png` shows 3 panels: XY trajectory overlay, ego speed comparison, interpolation error. Linear interpolation produces 1-10m errors at curves. Expected errors:
+
+| Scenario | Mean | Max |
+|----------|------|-----|
+| lane_change_cut_in | 1.26m | 5.63m |
+| pedestrian_emerge | 2.56m | 10.49m |
+| highway_merge | 1.56m | 6.67m |
+
 ## Common Tasks
 
 ### Plan -> Validate -> Render (New Pipeline)
@@ -597,6 +665,32 @@ Common errors and solutions:
 | Turn not occurring | Set `use_autopilot_turn: false` |
 
 ---
+
+## Editor Quick Reference
+
+### Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `a` | Add keyframe mode |
+| `m` | Move keyframe mode |
+| `d` | Delete keyframe mode |
+| `s` | Toggle snap to centerline |
+| `e` | Delete nearest event |
+| `Space` | Run analysis |
+| `r` | Reset view |
+| `t` | Print keyframe table to console |
+| `h` | Help |
+| `Ctrl+Z/Y` | Undo/Redo |
+| `Ctrl+S` | Save |
+| `Ctrl+E` | Export |
+
+### Key Data Formats
+
+- **scene_edit.json**: Sparse keyframes (editable) — actors with `[(t, x, y, v), ...]`
+- **plan.json**: Dense trajectory at dt=0.05s (renderable) — actors with `[{t, x, y, yaw, v, a, lane_id}, ...]`
+- **telemetry.json**: Per-frame ego + NPC state from CARLA recording
+- **telemetry.csv**: 23-column ego-only tabular format
 
 ## Quick Reference
 

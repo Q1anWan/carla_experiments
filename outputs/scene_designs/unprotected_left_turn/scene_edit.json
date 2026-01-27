@@ -1,0 +1,559 @@
+{
+  "version": "0.1",
+  "episode_id": "unprotected_left_turn",
+  "town": "Town03",
+  "dt": 0.05,
+  "duration": 59.9,
+  "map_dir": "data/maps/Town03",
+  "seed": 21,
+  "actors": [
+    {
+      "id": "ego",
+      "kind": "vehicle",
+      "role": "ego",
+      "blueprint": "vehicle.tesla.model3",
+      "controller": "teleport",
+      "color": "#d1495b",
+      "keyframes": [
+        {
+          "t": 0.0,
+          "x": 234.325,
+          "y": 28.979,
+          "v": 4.59
+        },
+        {
+          "t": 4.0,
+          "x": 234.22,
+          "y": 36.94,
+          "v": 0.0
+        },
+        {
+          "t": 8.0,
+          "x": 234.22,
+          "y": 36.94,
+          "v": 0.0
+        },
+        {
+          "t": 12.0,
+          "x": 234.22,
+          "y": 36.94,
+          "v": 0.0
+        },
+        {
+          "t": 16.0,
+          "x": 234.063,
+          "y": 43.454,
+          "v": 4.93
+        },
+        {
+          "t": 20.0,
+          "x": 233.407,
+          "y": 70.39,
+          "v": 6.68
+        },
+        {
+          "t": 24.0,
+          "x": 232.625,
+          "y": 102.598,
+          "v": 13.54
+        },
+        {
+          "t": 28.0,
+          "x": 219.311,
+          "y": 171.765,
+          "v": 20.39
+        },
+        {
+          "t": 32.0,
+          "x": 144.292,
+          "y": 196.657,
+          "v": 18.89
+        },
+        {
+          "t": 36.0,
+          "x": 82.142,
+          "y": 196.818,
+          "v": 12.21
+        },
+        {
+          "t": 40.0,
+          "x": 45.206,
+          "y": 199.042,
+          "v": 6.45
+        },
+        {
+          "t": 44.0,
+          "x": 45.378,
+          "y": 215.545,
+          "v": 6.51
+        },
+        {
+          "t": 48.0,
+          "x": 81.681,
+          "y": 200.786,
+          "v": 13.32
+        },
+        {
+          "t": 52.0,
+          "x": 125.671,
+          "y": 207.272,
+          "v": 13.64
+        },
+        {
+          "t": 56.0,
+          "x": 179.684,
+          "y": 204.152,
+          "v": 13.59
+        },
+        {
+          "t": 59.9,
+          "x": 225.869,
+          "y": 179.6,
+          "v": 13.59
+        }
+      ]
+    },
+    {
+      "id": "oncoming_vehicle",
+      "kind": "vehicle",
+      "role": "npc",
+      "blueprint": "vehicle.carlamotors.firetruck",
+      "controller": "teleport",
+      "color": "#6b9080",
+      "keyframes": [
+        {
+          "t": 0.0,
+          "x": 233.593,
+          "y": 57.992,
+          "v": 1.96
+        },
+        {
+          "t": 5.0,
+          "x": 232.993,
+          "y": 87.352,
+          "v": 7.94
+        },
+        {
+          "t": 10.0,
+          "x": 231.901,
+          "y": 131.766,
+          "v": 9.61
+        },
+        {
+          "t": 15.0,
+          "x": 213.703,
+          "y": 176.843,
+          "v": 10.48
+        },
+        {
+          "t": 20.0,
+          "x": 163.512,
+          "y": 196.229,
+          "v": 11.59
+        },
+        {
+          "t": 25.0,
+          "x": 101.166,
+          "y": 196.794,
+          "v": 13.17
+        },
+        {
+          "t": 30.0,
+          "x": 42.292,
+          "y": 196.919,
+          "v": 8.43
+        },
+        {
+          "t": 35.0,
+          "x": 3.52,
+          "y": 196.603,
+          "v": 6.66
+        },
+        {
+          "t": 40.0,
+          "x": 2.198,
+          "y": 162.505,
+          "v": 7.05
+        },
+        {
+          "t": 45.0,
+          "x": 2.114,
+          "y": 151.003,
+          "v": 0.0
+        },
+        {
+          "t": 50.0,
+          "x": 2.114,
+          "y": 151.003,
+          "v": 0.0
+        },
+        {
+          "t": 55.0,
+          "x": 2.114,
+          "y": 151.003,
+          "v": 0.0
+        },
+        {
+          "t": 59.9,
+          "x": 2.112,
+          "y": 150.648,
+          "v": 1.58
+        }
+      ]
+    },
+    {
+      "id": "autopilot",
+      "kind": "vehicle",
+      "role": "npc",
+      "blueprint": "vehicle.dodge.charger_police_2020",
+      "controller": "teleport",
+      "color": "#577590",
+      "keyframes": [
+        {
+          "t": 0.0,
+          "x": -25.266,
+          "y": 134.636,
+          "v": 2.85
+        },
+        {
+          "t": 5.0,
+          "x": -22.27,
+          "y": 134.512,
+          "v": 0.0
+        },
+        {
+          "t": 10.0,
+          "x": -22.27,
+          "y": 134.512,
+          "v": 0.0
+        },
+        {
+          "t": 15.0,
+          "x": -22.27,
+          "y": 134.512,
+          "v": 0.0
+        },
+        {
+          "t": 20.0,
+          "x": -22.27,
+          "y": 134.512,
+          "v": 0.0
+        },
+        {
+          "t": 25.0,
+          "x": -22.27,
+          "y": 134.512,
+          "v": 0.0
+        },
+        {
+          "t": 30.0,
+          "x": -21.446,
+          "y": 134.482,
+          "v": 2.73
+        },
+        {
+          "t": 35.0,
+          "x": 1.979,
+          "y": 116.883,
+          "v": 8.29
+        },
+        {
+          "t": 40.0,
+          "x": 1.643,
+          "y": 76.724,
+          "v": 8.14
+        },
+        {
+          "t": 45.0,
+          "x": 1.735,
+          "y": 36.565,
+          "v": 8.04
+        },
+        {
+          "t": 50.0,
+          "x": 19.371,
+          "y": 1.713,
+          "v": 8.03
+        },
+        {
+          "t": 55.0,
+          "x": 4.469,
+          "y": -34.482,
+          "v": 8.03
+        },
+        {
+          "t": 59.9,
+          "x": 4.843,
+          "y": -73.818,
+          "v": 8.04
+        }
+      ]
+    },
+    {
+      "id": "autopilot_2",
+      "kind": "vehicle",
+      "role": "npc",
+      "blueprint": "vehicle.micro.microlino",
+      "controller": "teleport",
+      "color": "#bc4749",
+      "keyframes": [
+        {
+          "t": 0.0,
+          "x": 98.339,
+          "y": -6.927,
+          "v": 2.14
+        },
+        {
+          "t": 5.0,
+          "x": 81.222,
+          "y": -18.45,
+          "v": 4.48
+        },
+        {
+          "t": 10.0,
+          "x": 82.285,
+          "y": -44.61,
+          "v": 4.8
+        },
+        {
+          "t": 15.0,
+          "x": 83.007,
+          "y": -71.69,
+          "v": 6.72
+        },
+        {
+          "t": 20.0,
+          "x": 84.094,
+          "y": -102.642,
+          "v": 3.11
+        },
+        {
+          "t": 25.0,
+          "x": 84.359,
+          "y": -110.162,
+          "v": 0.0
+        },
+        {
+          "t": 30.0,
+          "x": 84.359,
+          "y": -110.162,
+          "v": 0.0
+        },
+        {
+          "t": 35.0,
+          "x": 84.359,
+          "y": -110.162,
+          "v": 0.0
+        },
+        {
+          "t": 40.0,
+          "x": 84.359,
+          "y": -110.162,
+          "v": 0.0
+        },
+        {
+          "t": 45.0,
+          "x": 84.359,
+          "y": -110.162,
+          "v": 0.0
+        },
+        {
+          "t": 50.0,
+          "x": 84.762,
+          "y": -124.608,
+          "v": 3.12
+        },
+        {
+          "t": 55.0,
+          "x": 66.547,
+          "y": -136.858,
+          "v": 7.88
+        },
+        {
+          "t": 59.9,
+          "x": 37.375,
+          "y": -134.656,
+          "v": 3.48
+        }
+      ]
+    },
+    {
+      "id": "autopilot_3",
+      "kind": "vehicle",
+      "role": "npc",
+      "blueprint": "vehicle.nissan.patrol",
+      "controller": "teleport",
+      "color": "#386641",
+      "keyframes": [
+        {
+          "t": 0.0,
+          "x": -2.655,
+          "y": -50.237,
+          "v": 0.72
+        },
+        {
+          "t": 5.0,
+          "x": -10.802,
+          "y": -16.738,
+          "v": 8.13
+        },
+        {
+          "t": 10.0,
+          "x": -11.278,
+          "y": 17.037,
+          "v": 8.04
+        },
+        {
+          "t": 15.0,
+          "x": 19.312,
+          "y": 2.813,
+          "v": 8.09
+        },
+        {
+          "t": 20.0,
+          "x": -6.943,
+          "y": -18.495,
+          "v": 8.05
+        },
+        {
+          "t": 25.0,
+          "x": -14.534,
+          "y": 14.328,
+          "v": 8.06
+        },
+        {
+          "t": 30.0,
+          "x": 19.223,
+          "y": 7.501,
+          "v": 8.0
+        },
+        {
+          "t": 35.0,
+          "x": 58.493,
+          "y": 3.894,
+          "v": 8.06
+        },
+        {
+          "t": 40.0,
+          "x": 98.859,
+          "y": 4.497,
+          "v": 8.06
+        },
+        {
+          "t": 45.0,
+          "x": 139.225,
+          "y": 5.1,
+          "v": 8.06
+        },
+        {
+          "t": 50.0,
+          "x": 179.591,
+          "y": 5.703,
+          "v": 8.06
+        },
+        {
+          "t": 55.0,
+          "x": 219.958,
+          "y": 6.306,
+          "v": 8.06
+        },
+        {
+          "t": 59.9,
+          "x": 234.363,
+          "y": 31.057,
+          "v": 6.02
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "t_event": 31.3,
+      "event_type": "slow_down",
+      "expected_action": "Slow down",
+      "audio_id": "slow_down_00",
+      "t_voice_start": 28.3,
+      "t_robot_precue": 27.8
+    },
+    {
+      "t_event": 35.1,
+      "event_type": "brake_hard",
+      "expected_action": "Brake hard",
+      "audio_id": "brake_hard_01",
+      "t_voice_start": 32.1,
+      "t_robot_precue": 31.6
+    },
+    {
+      "t_event": 35.7,
+      "event_type": "slow_down",
+      "expected_action": "Slow down",
+      "audio_id": "slow_down_02",
+      "t_voice_start": 32.7,
+      "t_robot_precue": 32.2
+    },
+    {
+      "t_event": 39.7,
+      "event_type": "slow_down",
+      "expected_action": "Slow down",
+      "audio_id": "slow_down_03",
+      "t_voice_start": 36.7,
+      "t_robot_precue": 36.2
+    },
+    {
+      "t_event": 40.4,
+      "event_type": "lane_change_left",
+      "expected_action": "Change lane left",
+      "audio_id": "lane_change_left_04",
+      "t_voice_start": 37.4,
+      "t_robot_precue": 36.9
+    },
+    {
+      "t_event": 45.7,
+      "event_type": "slow_down",
+      "expected_action": "Slow down",
+      "audio_id": "slow_down_05",
+      "t_voice_start": 42.7,
+      "t_robot_precue": 42.2
+    },
+    {
+      "t_event": 45.8,
+      "event_type": "brake_hard",
+      "expected_action": "Brake hard",
+      "audio_id": "brake_hard_06",
+      "t_voice_start": 42.8,
+      "t_robot_precue": 42.3
+    },
+    {
+      "t_event": 47.7,
+      "event_type": "lane_change_left",
+      "expected_action": "Change lane left",
+      "audio_id": "lane_change_left_07",
+      "t_voice_start": 44.7,
+      "t_robot_precue": 44.2
+    },
+    {
+      "t_event": 48.1,
+      "event_type": "lane_change_right",
+      "expected_action": "Change lane right",
+      "audio_id": "lane_change_right_08",
+      "t_voice_start": 45.1,
+      "t_robot_precue": 44.6
+    },
+    {
+      "t_event": 49.8,
+      "event_type": "slow_down",
+      "expected_action": "Slow down",
+      "audio_id": "slow_down_09",
+      "t_voice_start": 46.8,
+      "t_robot_precue": 46.3
+    },
+    {
+      "t_event": 49.9,
+      "event_type": "brake_hard",
+      "expected_action": "Brake hard",
+      "audio_id": "brake_hard_10",
+      "t_voice_start": 46.9,
+      "t_robot_precue": 46.4
+    }
+  ]
+}
