@@ -60,7 +60,8 @@ class VehicleState:
     yaw: float = 0.0  # Yaw angle (deg)
 
     # Speed magnitude
-    speed: float = 0.0  # Total speed (m/s)
+    speed: float = 0.0  # Total speed from get_velocity() (m/s)
+    speed_fd: float = 0.0  # Finite-difference speed from position (m/s)
 
     # Control inputs
     throttle: float = 0.0  # Throttle input [0, 1]
@@ -95,7 +96,8 @@ class VehicleState:
                 "pitch": round(self.pitch, 3),
                 "yaw": round(self.yaw, 3),
             },
-            "speed": round(self.speed, 3),
+            "speed_actor": round(self.speed, 3),
+            "speed_fd": round(self.speed_fd, 3),
             "control": {
                 "throttle": round(self.throttle, 3),
                 "brake": round(self.brake, 3),
@@ -122,6 +124,7 @@ class VehicleState:
             self.pitch,
             self.yaw,
             self.speed,
+            self.speed_fd,
             self.throttle,
             self.brake,
             self.steer,
@@ -146,7 +149,8 @@ class VehicleState:
             "roll",
             "pitch",
             "yaw",
-            "speed",
+            "speed_actor",
+            "speed_fd",
             "throttle",
             "brake",
             "steer",

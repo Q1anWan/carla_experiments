@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
-PLAN_VERSION = "0.1"
+PLAN_VERSION = "0.2"
 
 
 @dataclass
@@ -19,7 +19,7 @@ class TrajectoryPoint:
     yaw: float
     v: float
     a: float
-    lane_id: Optional[int] = None
+    lane_id: Optional[Any] = None  # int (legacy) or str ("road:section:lane")
     s: Optional[float] = None
     tag: Optional[str] = None
 
@@ -33,7 +33,10 @@ class TrajectoryPoint:
             "a": round(self.a, 3),
         }
         if self.lane_id is not None:
-            payload["lane_id"] = int(self.lane_id)
+            try:
+                payload["lane_id"] = int(self.lane_id)
+            except (ValueError, TypeError):
+                payload["lane_id"] = str(self.lane_id)
         if self.s is not None:
             payload["s"] = round(self.s, 3)
         if self.tag:
@@ -56,6 +59,44 @@ class TrajectoryPoint:
 
 
 @dataclass
+class KeyframeAlignment:
+    """Maps original keyframe time to actual plan trajectory time."""
+    kf_idx: int
+    t_ui: float  # Original keyframe time (from scene_edit)
+    t_plan: float  # Corresponding time in plan trajectory
+    x_kf: float
+    y_kf: float
+    x_plan: float
+    y_plan: float
+    spatial_error_m: float
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "kf_idx": self.kf_idx,
+            "t_ui": round(self.t_ui, 3),
+            "t_plan": round(self.t_plan, 3),
+            "x_kf": round(self.x_kf, 3),
+            "y_kf": round(self.y_kf, 3),
+            "x_plan": round(self.x_plan, 3),
+            "y_plan": round(self.y_plan, 3),
+            "spatial_error_m": round(self.spatial_error_m, 3),
+        }
+
+    @staticmethod
+    def from_dict(raw: Dict[str, Any]) -> "KeyframeAlignment":
+        return KeyframeAlignment(
+            kf_idx=int(raw.get("kf_idx", 0)),
+            t_ui=float(raw.get("t_ui", 0)),
+            t_plan=float(raw.get("t_plan", 0)),
+            x_kf=float(raw.get("x_kf", 0)),
+            y_kf=float(raw.get("y_kf", 0)),
+            x_plan=float(raw.get("x_plan", 0)),
+            y_plan=float(raw.get("y_plan", 0)),
+            spatial_error_m=float(raw.get("spatial_error_m", 0)),
+        )
+
+
+@dataclass
 class ActorPlan:
     actor_id: str
     kind: str
@@ -63,9 +104,10 @@ class ActorPlan:
     blueprint: str
     controller: str = "teleport"
     trajectory: List[TrajectoryPoint] = field(default_factory=list)
+    keyframe_alignment: List[KeyframeAlignment] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        payload = {
             "id": self.actor_id,
             "kind": self.kind,
             "role": self.role,
@@ -73,6 +115,9 @@ class ActorPlan:
             "controller": self.controller,
             "trajectory": [point.to_dict() for point in self.trajectory],
         }
+        if self.keyframe_alignment:
+            payload["keyframe_alignment"] = [ka.to_dict() for ka in self.keyframe_alignment]
+        return payload
 
     @staticmethod
     def from_dict(raw: Dict[str, Any]) -> "ActorPlan":
@@ -83,6 +128,7 @@ class ActorPlan:
             blueprint=str(raw.get("blueprint", "")),
             controller=str(raw.get("controller", "teleport")),
             trajectory=[TrajectoryPoint.from_dict(p) for p in raw.get("trajectory", [])],
+            keyframe_alignment=[KeyframeAlignment.from_dict(ka) for ka in raw.get("keyframe_alignment", [])],
         )
 
 
@@ -135,9 +181,10 @@ class Plan:
     actors: List[ActorPlan] = field(default_factory=list)
     events_plan: List[EventPlan] = field(default_factory=list)
     version: str = PLAN_VERSION
+    source_scene_sha256: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        payload = {
             "version": self.version,
             "episode_id": self.episode_id,
             "town": self.town,
@@ -147,6 +194,9 @@ class Plan:
             "actors": [actor.to_dict() for actor in self.actors],
             "events_plan": [event.to_dict() for event in self.events_plan],
         }
+        if self.source_scene_sha256:
+            payload["source_scene_sha256"] = self.source_scene_sha256
+        return payload
 
     @staticmethod
     def from_dict(raw: Dict[str, Any]) -> "Plan":
@@ -159,6 +209,7 @@ class Plan:
             actors=[ActorPlan.from_dict(a) for a in raw.get("actors", [])],
             events_plan=[EventPlan.from_dict(e) for e in raw.get("events_plan", [])],
             version=str(raw.get("version", PLAN_VERSION)),
+            source_scene_sha256=raw.get("source_scene_sha256"),
         )
 
 

@@ -238,6 +238,95 @@ def do_convert(args: argparse.Namespace) -> None:
     )
 
 
+def do_bundle(args: argparse.Namespace) -> None:
+    """Collect all episode artifacts into a standardised bundle directory.
+
+    Bundle layout:
+        <bundle_dir>/
+            scene_edit.json
+            plan.json
+            telemetry.csv
+            telemetry.json
+            events.json
+            comparison.png
+            compare_report.json
+            master_video.mp4
+            run_metadata.json
+    """
+    import shutil
+    from .tools.make_comparison import generate_comparison
+
+    episode_dir = Path(args.out) / args.episode
+    bundle_dir = Path(args.bundle_dir) if args.bundle_dir else episode_dir / "bundle"
+    bundle_dir.mkdir(parents=True, exist_ok=True)
+
+    # Locate scene_edit.json
+    scene_path = None
+    if args.scene:
+        scene_path = Path(args.scene)
+    else:
+        candidate = Path(args.scene_designs) / args.episode / "scene_edit.json"
+        if candidate.exists():
+            scene_path = candidate
+
+    # Locate render outputs (prefer render/ subdir, fallback to episode root)
+    render_dir = episode_dir / "render"
+    if not render_dir.exists():
+        render_dir = episode_dir
+
+    # Mapping: (source_path, bundle_filename)
+    artifacts = []
+
+    if scene_path and scene_path.exists():
+        artifacts.append((scene_path, "scene_edit.json"))
+
+    for name in [
+        "plan.json",
+        "telemetry.csv",
+        "telemetry.json",
+        "events.json",
+        "master_video.mp4",
+        "run_metadata.json",
+    ]:
+        # Try episode root first (latest render), then render subdir (older)
+        for src_dir in [episode_dir, render_dir]:
+            p = src_dir / name
+            if p.exists():
+                artifacts.append((p, name))
+                break
+
+    # Also grab episode/plan.json if render didn't have it
+    ep_plan = episode_dir / "episode" / "plan.json"
+    if ep_plan.exists() and not any(n == "plan.json" for _, n in artifacts):
+        artifacts.append((ep_plan, "plan.json"))
+
+    # Copy artifacts
+    copied = []
+    for src, dst_name in artifacts:
+        dst = bundle_dir / dst_name
+        shutil.copy2(src, dst)
+        copied.append(dst_name)
+        logging.info("Bundled %s", dst_name)
+
+    # Run comparison if scene + telemetry exist
+    csv_in_bundle = bundle_dir / "telemetry.csv"
+    scene_in_bundle = bundle_dir / "scene_edit.json"
+    events_in_bundle = bundle_dir / "events.json"
+    if csv_in_bundle.exists() and scene_in_bundle.exists():
+        logging.info("Running comparison...")
+        generate_comparison(
+            scene_path=scene_in_bundle,
+            csv_path=csv_in_bundle,
+            output_dir=bundle_dir,
+            events_path=events_in_bundle if events_in_bundle.exists() else None,
+        )
+        copied.extend(["comparison.png", "compare_report.json"])
+
+    print(f"Bundle created at {bundle_dir} ({len(copied)} files)")
+    for name in sorted(set(copied)):
+        print(f"  {name}")
+
+
 def do_test(_args: argparse.Namespace) -> None:
     from .editor import test_editor
     test_editor.run_all_tests()
@@ -492,6 +581,13 @@ def build_parser() -> argparse.ArgumentParser:
     convert_cmd.add_argument("--duration", type=float, default=60.0)
     convert_cmd.add_argument("--dt", type=float, default=0.05)
 
+    bundle_cmd = subparsers.add_parser("bundle", help="Collect episode artifacts into a bundle directory")
+    bundle_cmd.add_argument("--episode", required=True, help="Episode ID")
+    bundle_cmd.add_argument("--out", default="outputs", help="Output root containing episode dirs")
+    bundle_cmd.add_argument("--scene", help="Explicit path to scene_edit.json")
+    bundle_cmd.add_argument("--scene-designs", default="outputs/scene_designs", help="Scene designs root dir")
+    bundle_cmd.add_argument("--bundle-dir", help="Override bundle output directory")
+
     test_cmd = subparsers.add_parser("test", help="Run automated editor tests")
 
     return parser
@@ -538,6 +634,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 0
     if args.command == "convert":
         do_convert(args)
+        return 0
+    if args.command == "bundle":
+        do_bundle(args)
         return 0
     if args.command == "test":
         do_test(args)

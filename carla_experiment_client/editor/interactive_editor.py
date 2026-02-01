@@ -13,7 +13,9 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 import numpy as np
 import yaml
 
-from ..planning.trajectory_schema import ActorPlan, EventPlan, Plan, TrajectoryPoint, save_events_plan, save_plan
+from ..planning.trajectory_schema import ActorPlan, EventPlan, KeyframeAlignment, Plan, TrajectoryPoint, save_events_plan, save_plan
+from ..planning.path_planner import LaneGraph, build_road_path, generate_speed_profile, parameterize_by_time, compute_keyframe_alignment, compute_file_sha256, apply_episode_end_mode
+from ..planning.plan_validator import validate_plan, generate_debug_plots, save_report
 
 plt = None
 Button = None
@@ -69,6 +71,11 @@ class SceneEdit:
     seed: int = 0
     actors: List[ActorState] = field(default_factory=list)
     events: List[EventMarker] = field(default_factory=list)
+    # G3: Episode end mode - controls how trajectory tail is handled
+    # "trim_to_motion" - truncate after last motion (recommended)
+    # "hold_at_end" - keep actor at final position (default, legacy)
+    # "extend_cruise" - continue at last speed (not yet implemented)
+    episode_end_mode: str = "hold_at_end"
 
 
 # DocRef: technical_details.md#2.4
@@ -228,9 +235,21 @@ def _build_trajectory(
     dt: float,
     duration: float,
     map_index: Optional[MapIndex],
+    lane_graph: Optional[LaneGraph] = None,
 ) -> List[TrajectoryPoint]:
     if dt <= 0:
         raise ValueError("dt must be positive.")
+
+    # Road-following path planner (when lane graph is available)
+    if lane_graph is not None and len(keyframes) >= 2:
+        prepared = _prepare_keyframes(keyframes, duration)
+        if prepared:
+            path = build_road_path(prepared, lane_graph)
+            if path and len(path) >= 2:
+                speeds = generate_speed_profile(path, prepared)
+                return parameterize_by_time(path, speeds, dt, duration)
+        # Fall through to linear interpolation if road path failed
+
     total_frames = max(1, int(duration / dt))
     keyframes = _prepare_keyframes(keyframes, duration)
     if not keyframes:
@@ -297,8 +316,10 @@ def _build_plan(
     scene: SceneEdit,
     *,
     map_index: Optional[MapIndex],
+    lane_graph: Optional[LaneGraph] = None,
     voice_lead_time: float,
     robot_precue_lead: float,
+    scene_path: Optional[Path] = None,
 ) -> Tuple[Plan, List[EventPlan]]:
     actors = []
     for actor in scene.actors:
@@ -307,7 +328,18 @@ def _build_plan(
             dt=scene.dt,
             duration=scene.duration,
             map_index=map_index,
+            lane_graph=lane_graph,
         )
+        # G3: Apply episode end mode to handle static tail
+        trajectory = apply_episode_end_mode(
+            trajectory,
+            scene.episode_end_mode,
+            scene.dt,
+        )
+        # Compute keyframe alignment (mapping t_ui -> t_plan)
+        alignment_dicts = compute_keyframe_alignment(trajectory, actor.keyframes)
+        kf_alignment = [KeyframeAlignment.from_dict(d) for d in alignment_dicts]
+
         actors.append(
             ActorPlan(
                 actor_id=actor.actor_id,
@@ -316,6 +348,7 @@ def _build_plan(
                 blueprint=actor.blueprint,
                 controller=actor.controller,
                 trajectory=trajectory,
+                keyframe_alignment=kf_alignment,
             )
         )
 
@@ -339,6 +372,11 @@ def _build_plan(
             )
         )
 
+    # Compute source scene SHA256 for traceability
+    source_sha = None
+    if scene_path and scene_path.exists():
+        source_sha = compute_file_sha256(scene_path)
+
     plan = Plan(
         episode_id=scene.episode_id,
         town=scene.town,
@@ -347,6 +385,7 @@ def _build_plan(
         duration=scene.duration,
         actors=actors,
         events_plan=events_plan,
+        source_scene_sha256=source_sha,
     )
     return plan, events_plan
 
@@ -400,6 +439,8 @@ def _load_scene(scene_path: Path) -> SceneEdit:
         seed=int(raw.get("seed", 0)),
         actors=actors,
         events=events,
+        # G3: Episode end mode (defaults to "hold_at_end" for backwards compatibility)
+        episode_end_mode=str(raw.get("episode_end_mode", "hold_at_end")),
     )
 
 
@@ -413,6 +454,8 @@ def _save_scene(scene: SceneEdit, scene_path: Path) -> None:
         "duration": scene.duration,
         "map_dir": scene.map_dir,
         "seed": scene.seed,
+        # G3: Episode end mode
+        "episode_end_mode": scene.episode_end_mode,
         "actors": [
             {
                 "id": actor.actor_id,
@@ -477,6 +520,16 @@ class SceneEditor:
         self.conflict_threshold_m = conflict_threshold_m
         self.vehicle_lane_threshold_m = vehicle_lane_threshold_m
         self.walker_lane_threshold_m = walker_lane_threshold_m
+
+        # Load lane graph for road-following path planner
+        map_graph_path = map_dir / "map_graph.json"
+        self._lane_graph: Optional[LaneGraph] = None
+        if map_graph_path.exists():
+            try:
+                self._lane_graph = LaneGraph(map_graph_path)
+                logging.info("Loaded LaneGraph from %s", map_graph_path)
+            except Exception as e:
+                logging.warning("Failed to load LaneGraph: %s", e)
 
         self.active_actor_id = scene.actors[0].actor_id if scene.actors else ""
         self.selected_keyframe: Optional[Tuple[str, int]] = None
@@ -557,7 +610,7 @@ class SceneEditor:
             self.ax_buttons.append(ax)
             y -= btn_gap
 
-        # --- Reset + Pipeline buttons ---
+        # --- Reset + Pipeline + Play buttons ---
         reset_y = 0.78 - 3 * btn_gap
         ax_reset = self.fig.add_axes([col1_x, reset_y, btn_w, btn_h])
         btn_reset = Button(ax_reset, "Reset")
@@ -568,6 +621,14 @@ class SceneEditor:
         btn_pipeline = Button(ax_pipeline, "Pipeline")
         btn_pipeline.on_clicked(self._run_pipeline)
         self._buttons.append(btn_pipeline)
+
+        play_y = reset_y - btn_gap
+        ax_play = self.fig.add_axes([col1_x, play_y, btn_w, btn_h])
+        self._btn_play = Button(ax_play, "Play")
+        self._btn_play.on_clicked(self._toggle_play)
+        self._buttons.append(self._btn_play)
+        self._playing = False
+        self._play_timer = None
 
         # --- Event section ---
         input_h = 0.026
@@ -645,6 +706,37 @@ class SceneEditor:
         t = float(self.time_slider.val)
         if not self._delete_nearest_event(t, tolerance_s=2.0):
             logging.info("No event near t=%.2fs to delete", t)
+
+    def _toggle_play(self, _event: Any = None) -> None:
+        """Toggle play/pause animation of the time slider."""
+        if self._playing:
+            self._playing = False
+            if self._play_timer is not None:
+                self._play_timer.stop()
+                self._play_timer = None
+            self._btn_play.label.set_text("Play")
+        else:
+            self._playing = True
+            self._btn_play.label.set_text("Pause")
+            self._play_timer = self.fig.canvas.new_timer(interval=50)  # 20 fps
+            self._play_timer.add_callback(self._play_tick)
+            self._play_timer.start()
+        self.fig.canvas.draw_idle()
+
+    def _play_tick(self) -> None:
+        """Advance time slider by dt during playback."""
+        if not self._playing:
+            return
+        t = float(self.time_slider.val) + self.scene.dt * 2  # 2x realtime
+        if t > self.scene.duration:
+            t = 0.0
+        self.time_slider.set_val(t)
+
+    def _step_time(self, direction: int) -> None:
+        """Step time slider by one dt in given direction (+1 or -1)."""
+        t = float(self.time_slider.val) + direction * self.scene.dt
+        t = max(0.0, min(self.scene.duration, t))
+        self.time_slider.set_val(t)
 
     def _update_status(self) -> None:
         snap_str = "ON" if self.snap_enabled else "OFF"
@@ -1091,6 +1183,17 @@ class SceneEditor:
             x, y = _interpolate_position(ego.keyframes, event.t_event)
             points.append((x, y))
         self.event_scatter.set_offsets(points)
+        # Draw event markers on time slider axis
+        if not hasattr(self, "_slider_event_lines"):
+            self._slider_event_lines = []
+        for line in self._slider_event_lines:
+            line.remove()
+        self._slider_event_lines = []
+        for event in self.scene.events:
+            line = self.ax_slider.axvline(
+                event.t_event, color="#f4a261", alpha=0.7, linewidth=1.5, linestyle="--"
+            )
+            self._slider_event_lines.append(line)
         self.fig.canvas.draw_idle()
 
     def _update_time_marker(self, t: float) -> None:
@@ -1215,6 +1318,12 @@ class SceneEditor:
             self._show_help()
         elif event.key == "t":
             self._show_keyframe_table()
+        elif event.key == "right":
+            self._step_time(+1)
+        elif event.key == "left":
+            self._step_time(-1)
+        elif event.key == "p":
+            self._toggle_play()
         elif event.key == "delete" or event.key == "backspace":
             if self.selected_keyframe is not None:
                 actor_id, idx = self.selected_keyframe
@@ -1234,6 +1343,8 @@ class SceneEditor:
   d         - Delete keyframe mode
   s         - Toggle snap to centerline
   e         - Delete nearest event at current time
+  p         - Play/Pause timeline animation
+  Left/Right- Step time by one dt
   space     - Run analysis (conflicts, kinematic, TTC)
   r         - Reset view to fit all actors
   t         - Show keyframe table
@@ -1311,8 +1422,10 @@ class SceneEditor:
         plan, events_plan = _build_plan(
             self.scene,
             map_index=self.map_index,
+            lane_graph=getattr(self, "_lane_graph", None),
             voice_lead_time=self.voice_lead,
             robot_precue_lead=self.robot_precue,
+            scene_path=self.scene_path,
         )
         self.out_dir.mkdir(parents=True, exist_ok=True)
         save_plan(self.out_dir / "plan.json", plan)
@@ -1348,8 +1461,10 @@ class SceneEditor:
         plan, _ = _build_plan(
             self.scene,
             map_index=self.map_index,
+            lane_graph=getattr(self, "_lane_graph", None),
             voice_lead_time=self.voice_lead,
             robot_precue_lead=self.robot_precue,
+            scene_path=self.scene_path,
         )
         conflict_points: Dict[str, List[Tuple[float, float]]] = {a.actor_id: [] for a in plan.actors}
         infeasible_points: Dict[str, List[Tuple[float, float]]] = {a.actor_id: [] for a in plan.actors}
@@ -1455,13 +1570,29 @@ class SceneEditor:
             ttc_pts = [(p[0], p[1]) for p in ttc_points.get(actor.actor_id, [])]
             actor.ttc_scatter.set_offsets(_as_offsets(ttc_pts) if self.show_ttc else np.empty((0, 2)))
 
+        # --- Run plan validator for reverse / yaw-jump / speed / accel checks ---
+        val_report = validate_plan(plan)
+        n_val_errors = sum(1 for i in val_report.issues if i.severity == "error")
+        n_val_warnings = sum(1 for i in val_report.issues if i.severity == "warning")
+        save_report(val_report, self.out_dir)
+        generate_debug_plots(plan, self.out_dir / "debug_plots.png")
+
         self._analysis_summary = (
             f"C:{n_conflicts} OL:{n_infeasible} K:{n_kinematic} TTC:{n_ttc}"
+            f" | Val: {n_val_errors}err {n_val_warnings}warn"
         )
         logging.info(
-            "Analysis: conflicts=%d, off-lane=%d, kinematic=%d, TTC warnings=%d",
-            n_conflicts, n_infeasible, n_kinematic, n_ttc
+            "Analysis: conflicts=%d, off-lane=%d, kinematic=%d, TTC=%d, "
+            "validator errors=%d warnings=%d",
+            n_conflicts, n_infeasible, n_kinematic, n_ttc,
+            n_val_errors, n_val_warnings,
         )
+        if n_val_errors > 0:
+            logging.warning("Validator found %d error(s). See %s/report.md", n_val_errors, self.out_dir)
+            for issue in val_report.issues:
+                if issue.severity == "error":
+                    logging.warning("  %s [%s] f%d-%d: %s", issue.kind, issue.actor_id,
+                                    issue.frame_start, issue.frame_end, issue.detail)
         self._update_status()
         self.fig.canvas.draw_idle()
 

@@ -99,6 +99,12 @@ class TelemetryRecorder:
         self._frames: List[TelemetryFrame] = []
         self._ego_states: List[VehicleState] = []
         self._prev_time: Optional[float] = None
+        # actor_id → (x, y, z, roll, pitch, yaw)
+        self._actor_prev_state: Dict[int, tuple] = {}
+        self._ego_prev_pos: Optional[tuple] = None  # (x, y, z)
+        self._ego_prev_speed_fd: Optional[float] = None
+        # G1: SHA256 hash of source plan.json for traceability
+        self._source_plan_sha256: Optional[str] = None
 
     def reset(self) -> None:
         """Reset recorder state for new recording."""
@@ -106,6 +112,14 @@ class TelemetryRecorder:
         self._frames = []
         self._ego_states = []
         self._prev_time = None
+        self._actor_prev_state = {}
+        self._ego_prev_pos = None
+        self._ego_prev_speed_fd = None
+        self._source_plan_sha256 = None
+
+    def set_source_plan_sha256(self, sha256: str) -> None:
+        """Set SHA256 hash of source plan.json for traceability (G1)."""
+        self._source_plan_sha256 = sha256
 
     def tick(
         self,
@@ -128,9 +142,40 @@ class TelemetryRecorder:
         dt = snapshot.timestamp.delta_seconds
         t_sim = frame_index / self.fps
 
-        # Compute ego state using SAE J1100 transformer
+        # DOC:telemetry-ego-state
+        # Compute ego state using SAE J670 transformer (actor-based velocity)
         ego_state = self._transformer.compute_state(self.ego_vehicle, dt)
+        # Set ego speed_fd on the state object (for CSV export)
+        _fd_dt_ego = 1.0 / max(1, self.fps)
+        if self._ego_prev_pos is not None:
+            _edx = ego_state.world_x - self._ego_prev_pos[0]
+            _edy = ego_state.world_y - self._ego_prev_pos[1]
+            ego_state.speed_fd = (_edx * _edx + _edy * _edy) ** 0.5 / _fd_dt_ego
         self._ego_states.append(ego_state)
+
+        # Ego dict with fd velocity already in to_dict() via speed_fd field
+        ego_dict = ego_state.to_dict()
+        # Add world-frame fd velocity vector
+        _fd_dt = 1.0 / max(1, self.fps)
+        if self._ego_prev_pos is not None:
+            edx = ego_state.world_x - self._ego_prev_pos[0]
+            edy = ego_state.world_y - self._ego_prev_pos[1]
+            edz = ego_state.world_z - self._ego_prev_pos[2]
+            ego_dict["velocity_fd"] = {
+                "x": round(edx / _fd_dt, 3),
+                "y": round(edy / _fd_dt, 3),
+                "z": round(edz / _fd_dt, 3),
+            }
+            if self._ego_prev_speed_fd is not None:
+                ego_dict["accel_fd"] = round(
+                    (ego_state.speed_fd - self._ego_prev_speed_fd) / _fd_dt, 3
+                )
+            self._ego_prev_speed_fd = ego_state.speed_fd
+        else:
+            ego_dict["velocity_fd"] = {"x": 0.0, "y": 0.0, "z": 0.0}
+            ego_dict["accel_fd"] = 0.0
+            self._ego_prev_speed_fd = 0.0
+        self._ego_prev_pos = (ego_state.world_x, ego_state.world_y, ego_state.world_z)
 
         # Record nearby actors if configured
         actor_records = []
@@ -142,7 +187,7 @@ class TelemetryRecorder:
             t_sim=t_sim,
             t_world=t_world,
             dt=dt,
-            ego=ego_state.to_dict(),
+            ego=ego_dict,
             actors=actor_records,
         )
         self._frames.append(frame_data)
@@ -230,16 +275,60 @@ class TelemetryRecorder:
                 "distance_to_ego": round(dist, 2),
             }
 
-            # Add velocity for vehicles and walkers
+            # --- 6-DOF finite-difference velocity & angular velocity ---
+            actor_id = actor.id
+            cur_state = (location.x, location.y, location.z,
+                         rotation.roll, rotation.pitch, rotation.yaw)
+            prev = self._actor_prev_state.get(actor_id)
+            self._actor_prev_state[actor_id] = cur_state
+            _dt = 1.0 / max(1, self.fps)
+
+            if prev is not None:
+                dx = location.x - prev[0]
+                dy = location.y - prev[1]
+                dz = location.z - prev[2]
+                speed_fd = (dx * dx + dy * dy) ** 0.5 / _dt
+
+                # Angular velocity (deg/s) with wrap handling
+                def _angle_diff(a, b):
+                    d = a - b
+                    return (d + 180) % 360 - 180
+
+                d_roll = _angle_diff(rotation.roll, prev[3])
+                d_pitch = _angle_diff(rotation.pitch, prev[4])
+                d_yaw = _angle_diff(rotation.yaw, prev[5])
+
+                record["velocity"] = {
+                    "x": round(dx / _dt, 3),
+                    "y": round(dy / _dt, 3),
+                    "z": round(dz / _dt, 3),
+                }
+                record["angular_velocity"] = {
+                    "roll": round(d_roll / _dt, 3),
+                    "pitch": round(d_pitch / _dt, 3),
+                    "yaw": round(d_yaw / _dt, 3),
+                }
+                record["speed"] = round(speed_fd, 3)
+                record["speed_fd"] = round(speed_fd, 3)
+            else:
+                record["velocity"] = {"x": 0.0, "y": 0.0, "z": 0.0}
+                record["angular_velocity"] = {"roll": 0.0, "pitch": 0.0, "yaw": 0.0}
+                record["speed"] = 0.0
+                record["speed_fd"] = 0.0
+
+            # Also record CARLA physics velocity for reference
             if hasattr(actor, "get_velocity"):
                 vel = actor.get_velocity()
-                speed = (vel.x ** 2 + vel.y ** 2 + vel.z ** 2) ** 0.5
-                record["velocity"] = {
-                    "x": round(vel.x, 3),
-                    "y": round(vel.y, 3),
-                    "z": round(vel.z, 3),
+                record["speed_actor"] = round(
+                    (vel.x ** 2 + vel.y ** 2 + vel.z ** 2) ** 0.5, 3
+                )
+            if hasattr(actor, "get_angular_velocity"):
+                avel = actor.get_angular_velocity()
+                record["angular_velocity_actor"] = {
+                    "x": round(avel.x, 3),
+                    "y": round(avel.y, 3),
+                    "z": round(avel.z, 3),
                 }
-                record["speed"] = round(speed, 3)
 
             return record
 
@@ -275,24 +364,31 @@ class TelemetryRecorder:
 
     def _save_json(self, path: Path) -> None:
         """Save telemetry as JSON."""
-        data = {
-            "metadata": {
-                "fps": self.fps,
-                "total_frames": len(self._frames),
-                "coordinate_system": "SAE_J670",
-                "coordinate_description": {
-                    "X": "Forward (positive = front of vehicle)",
-                    "Y": "Left (positive = left side of vehicle)",
-                    "Z": "Up (positive = top of vehicle)",
-                },
-                "units": {
-                    "position": "meters",
-                    "velocity": "m/s",
-                    "acceleration": "m/s^2",
-                    "angular_velocity": "deg/s",
-                    "angles": "degrees",
-                },
+        # DOC:telemetry-schema-v0.2
+        metadata = {
+            "schema_version": "0.2",
+            "fps": self.fps,
+            "dt": round(1.0 / max(1, self.fps), 4),
+            "total_frames": len(self._frames),
+            "position_frame": "CARLA_WORLD",
+            "vehicle_frame": "SAE_J670",
+            "speed_fields": {
+                "speed_fd": "Finite-difference from position (primary, reliable under teleport)",
+                "speed_actor": "CARLA get_velocity() magnitude (may be 0 under teleport)",
             },
+            "units": {
+                "position": "m",
+                "speed": "m/s",
+                "acceleration": "m/s^2",
+                "angular_velocity": "deg/s",
+                "angles": "deg",
+            },
+        }
+        # G1: Add source_plan_sha256 for traceability
+        if self._source_plan_sha256:
+            metadata["source_plan_sha256"] = self._source_plan_sha256
+        data = {
+            "metadata": metadata,
             "frames": [f.to_dict() for f in self._frames],
         }
         with open(path, "w", encoding="utf-8") as f:
