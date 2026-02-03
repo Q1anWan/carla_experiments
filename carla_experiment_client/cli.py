@@ -365,6 +365,131 @@ def do_test(_args: argparse.Namespace) -> None:
     test_editor.run_all_tests()
 
 
+def do_visualize(args: argparse.Namespace) -> None:
+    """Generate telemetry visualization images."""
+    import json
+    from pathlib import Path
+
+    run_dir = Path(args.run_dir)
+    telemetry_path = run_dir / "telemetry.json"
+
+    if not telemetry_path.exists():
+        raise FileNotFoundError(f"Telemetry not found: {telemetry_path}")
+
+    if args.interactive:
+        # Launch interactive viewer
+        from .tools.telemetry_viewer import launch_viewer
+        plan_path = run_dir / "plan.json"
+        if not plan_path.exists():
+            logging.warning("plan.json not found, using telemetry-only mode")
+            plan_path = None
+        launch_viewer(plan_path, telemetry_path)
+        return
+
+    # Generate static visualization
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as mpatches
+    import numpy as np
+
+    with open(telemetry_path) as f:
+        data = json.load(f)
+
+    frames = data["frames"]
+    output_path = Path(args.output) if args.output else run_dir / "telemetry_visualization.png"
+
+    # Extract data
+    t_sim = [f["t_sim"] for f in frames]
+    ego_x = [f["ego"]["position"]["x"] for f in frames]
+    ego_y = [f["ego"]["position"]["y"] for f in frames]
+    ego_speed = [f["ego"]["speed_actor"] for f in frames]
+
+    # Create figure
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    fig.suptitle(f"Telemetry: {run_dir.name}", fontsize=12, fontweight="bold")
+
+    # 1. Trajectory
+    scatter = axes[0, 0].scatter(ego_x, ego_y, c=t_sim, cmap="viridis", s=2, alpha=0.8)
+    axes[0, 0].set_xlabel("X (m)")
+    axes[0, 0].set_ylabel("Y (m)")
+    axes[0, 0].set_title("Ego Trajectory")
+    axes[0, 0].set_aspect("equal")
+    plt.colorbar(scatter, ax=axes[0, 0], label="Time (s)")
+
+    # 2. Speed profile
+    axes[0, 1].plot(t_sim, ego_speed, "b-", linewidth=1)
+    axes[0, 1].set_xlabel("Time (s)")
+    axes[0, 1].set_ylabel("Speed (m/s)")
+    axes[0, 1].set_title("Speed Profile")
+    axes[0, 1].grid(True, alpha=0.3)
+
+    # 3. Distance traveled
+    distance = [0]
+    for i in range(1, len(ego_x)):
+        d = np.sqrt((ego_x[i] - ego_x[i-1])**2 + (ego_y[i] - ego_y[i-1])**2)
+        distance.append(distance[-1] + d)
+    axes[1, 0].plot(t_sim, distance, "g-", linewidth=1.5)
+    axes[1, 0].set_xlabel("Time (s)")
+    axes[1, 0].set_ylabel("Distance (m)")
+    axes[1, 0].set_title("Cumulative Distance")
+    axes[1, 0].grid(True, alpha=0.3)
+
+    # 4. Traffic light states (if available)
+    ax4 = axes[1, 1]
+    if "traffic_lights" in frames[0] and frames[0]["traffic_lights"]:
+        tl_states = {}
+        for f in frames:
+            t = f["t_sim"]
+            for tl in f.get("traffic_lights", [])[:3]:
+                tl_id = tl["id"]
+                if tl_id not in tl_states:
+                    tl_states[tl_id] = {"t": [], "state": [], "pole": tl["pole_index"]}
+                tl_states[tl_id]["t"].append(t)
+                state_val = {"Green": 2, "Yellow": 1, "Red": 0}.get(tl["state"], -1)
+                tl_states[tl_id]["state"].append(state_val)
+
+        colors = ["#e74c3c", "#f1c40f", "#2ecc71"]
+        y_offset = 0
+        for tl_id, tl_data in list(tl_states.items())[:3]:
+            for i in range(len(tl_data["t"]) - 1):
+                state = tl_data["state"][i]
+                ax4.fill_between([tl_data["t"][i], tl_data["t"][i+1]],
+                                y_offset, y_offset + 0.8,
+                                color=colors[state] if state >= 0 else "gray", alpha=0.8)
+            ax4.text(-2, y_offset + 0.4, f"TL {tl_id}", fontsize=8, va="center", ha="right")
+            y_offset += 1
+        ax4.set_xlabel("Time (s)")
+        ax4.set_title("Traffic Light States")
+        ax4.set_xlim(0, max(t_sim))
+        ax4.set_ylim(-0.2, y_offset + 0.2)
+        ax4.set_yticks([])
+        patches = [mpatches.Patch(color=c, label=l) for c, l in zip(colors, ["Red", "Yellow", "Green"])]
+        ax4.legend(handles=patches, loc="upper right", fontsize=8)
+    else:
+        # Summary text instead
+        ax4.axis("off")
+        summary = f"""
+Run Summary
+-----------
+Duration: {t_sim[-1]:.1f}s
+Frames: {len(frames)}
+FPS: {data['metadata']['fps']}
+
+Ego Vehicle:
+  Distance: {distance[-1]:.1f} m
+  Avg Speed: {np.mean(ego_speed):.2f} m/s
+  Max Speed: {max(ego_speed):.2f} m/s
+"""
+        ax4.text(0.1, 0.9, summary, transform=ax4.transAxes, fontsize=10,
+                verticalalignment="top", fontfamily="monospace",
+                bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5))
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    logging.info("Saved visualization: %s", output_path)
+
+
 def run_menu(base_args: argparse.Namespace, globals_cfg: Dict[str, Any]) -> None:
     while True:
         print("\n=== CARLA Experiment CLI ===")
@@ -636,6 +761,12 @@ def build_parser() -> argparse.ArgumentParser:
     v3_cmd.add_argument("--client-config", type=str, default="configs/client.yaml")
     v3_cmd.add_argument("--allow-version-mismatch", action="store_true", default=False)
 
+    # Telemetry visualization
+    viz_cmd = subparsers.add_parser("visualize", help="Generate telemetry visualization images")
+    viz_cmd.add_argument("--run-dir", required=True, help="Path to run output directory")
+    viz_cmd.add_argument("--output", help="Output image path (default: <run-dir>/telemetry_visualization.png)")
+    viz_cmd.add_argument("--interactive", action="store_true", help="Launch interactive viewer")
+
     return parser
 
 
@@ -689,6 +820,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 0
     if args.command == "run-v3":
         do_run_v3(args, globals_cfg)
+        return 0
+    if args.command == "visualize":
+        do_visualize(args)
         return 0
 
     return 1
