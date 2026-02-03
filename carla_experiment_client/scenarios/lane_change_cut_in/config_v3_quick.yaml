@@ -1,0 +1,132 @@
+id: lane_change_cut_in
+map: Town05
+weather: ClearNoon
+seed: 42
+duration: 120.0
+fps: 20
+fixed_delta_seconds: 0.05
+sync_mode: true
+no_rendering_mode: false
+ego_vehicle: "vehicle.tesla.model3"
+
+camera:
+  width: 640
+  height: 360
+  fov: 90.0
+  fps: 20
+  preset: driver
+
+events:
+  voice_lead_time_s: 3.0
+  robot_precue_lead_s: 0.5
+  min_event_time_s: 5.0
+  enabled_types: []
+  single_event_types: []
+
+scenario:
+  execution_mode: v3
+  ego_spawn_index: 10
+  fast_spawn: true
+
+  # Traffic light timing (short cycle to minimize wait time)
+  # 3-direction intersection cycle ≈ 3×(green+yellow) = 27s max wait
+  traffic_light_red_s: 2.0
+  traffic_light_green_s: 8.0
+  traffic_light_yellow_s: 1.0
+
+  # Multiple cut-in vehicles at different offsets
+  cut_in_vehicles:
+    - tag: cut_in_a
+      ahead_m: 12.0
+      speed_delta: null
+    - tag: cut_in_b
+      ahead_m: 20.0
+      speed_delta: null
+    - tag: cut_in_c
+      ahead_m: 28.0
+      speed_delta: null
+
+  lead_slow_distance_m: 35.0
+  lead_slow_speed_delta: 30.0
+
+  # Background traffic
+  background_vehicle_count: 20
+  background_walker_count: 6
+  background_min_distance_m: 30.0
+  prewarm_seconds: 1.0
+
+  events:
+    # Event 1: cut_in_a at ~10-30s window
+    - id: cut_in_01
+      type: cut_in
+      actor: cut_in_a
+      trigger:
+        all:
+          - {metric: elapsed_s, op: ">=", value: 10}
+          - {metric: elapsed_s, op: "<=", value: 110}
+          - {metric: gap_m, op: "<=", value: 20}
+          - {metric: ttc_s, op: "<=", value: 4.0}
+      action:
+        tm:
+          speed_diff_pct: -10
+          auto_lane_change: false
+        execute:
+          force_lane_change: left
+        post:
+          auto_lane_change: true
+          distance_to_leading_vehicle_m: 5.0
+      fallback:
+        controller_override_window_s: 2.0
+        lane_change_profile: quintic
+      gate_min_ttc_s: 1.0
+      gate_max_gap_m: 25.0
+
+    # Event 2: cut_in_b at ~35s+
+    - id: cut_in_02
+      type: cut_in
+      actor: cut_in_b
+      trigger:
+        all:
+          - {metric: elapsed_s, op: ">=", value: 35}
+          - {metric: elapsed_s, op: "<=", value: 110}
+          - {metric: gap_m, op: "<=", value: 20}
+          - {metric: ttc_s, op: "<=", value: 4.0}
+      action:
+        tm:
+          speed_diff_pct: -15
+          auto_lane_change: false
+        execute:
+          force_lane_change: left
+        post:
+          auto_lane_change: true
+          distance_to_leading_vehicle_m: 5.0
+      fallback:
+        controller_override_window_s: 2.5
+        lane_change_profile: quintic
+      gate_min_ttc_s: 1.0
+      gate_max_gap_m: 25.0
+
+    # Event 3: cut_in_c at ~65s+
+    - id: cut_in_03
+      type: cut_in
+      actor: cut_in_c
+      trigger:
+        all:
+          - {metric: elapsed_s, op: ">=", value: 65}
+          - {metric: elapsed_s, op: "<=", value: 110}
+          - {metric: gap_m, op: "<=", value: 22}
+          - {metric: ttc_s, op: "<=", value: 4.5}
+      action:
+        tm:
+          speed_diff_pct: -5
+          auto_lane_change: false
+        execute:
+          force_lane_change: left
+        post:
+          auto_lane_change: true
+          distance_to_leading_vehicle_m: 4.0
+      fallback:
+        controller_override_window_s: 2.0
+        lane_change_profile: quintic
+      gate_min_ttc_s: 1.0
+      gate_max_gap_m: 25.0

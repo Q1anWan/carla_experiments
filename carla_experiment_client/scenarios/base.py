@@ -325,7 +325,6 @@ class BaseScenario:
         try:
             # Set global parameters for smoother driving
             tm.set_global_distance_to_leading_vehicle(4.0)  # Increased base distance
-            tm.set_synchronous_mode(True)
         except (AttributeError, RuntimeError) as e:
             logging.warning("TM global config failed: %s", e)
 

@@ -1,5 +1,21 @@
 # CARLA 路径编辑器与遥测可视化工具 — 技术细节
 
+## 版本演进
+
+| 版本 | 核心特性 | 事件触发 | 车辆控制 | 配置文件 |
+|------|----------|----------|----------|----------|
+| **V1** | 帧号触发 | `trigger_frame: 100` | TM autopilot | `scenario.yaml` |
+| **V2** | 关键帧编辑 | 帧号 + 编辑器关键帧 | Teleport 回放 | `scene_edit.json` |
+| **V3** | 条件 DSL | `trigger.all: [{metric, op, value}]` | TM + Override 混合 | `config_v3*.yaml` |
+
+### V3 新增模块
+- `director/`: 事件编排器 (event_dsl, metrics, director, gate_checks)
+- `driver_backends/`: 驱动后端 (tm_backend, short_override)
+- `control/`: 控制器 (pid)
+- `telemetry/recorder.py`: 新增 traffic_lights 记录
+
+---
+
 ## 1. 系统架构
 
 ```
@@ -493,7 +509,195 @@ ax3.set_title(f'mean={mean_err:.2f}m, max={max_err:.2f}m')
 
 ---
 
-## 8. 已知局限与优化方向
+## 8. V3 Director 架构
+
+### 8.1 概述
+
+V3 Director 是条件触发的事件编排系统，替代 V1 基于帧号的硬编码触发。
+
+```
+┌─────────────┐     ┌──────────────┐     ┌──────────────┐
+│  Event DSL   │────▶│   Director   │────▶│ Driver Backend│
+│  (YAML)      │     │  (tick loop) │     │  (TM/Override)│
+└──────────────┘     └──────────────┘     └───────────────┘
+                            │
+                     metrics.compute_metrics()
+                            │
+                     gap_m, ttc_s, lateral_offset_m
+```
+
+### 8.2 事件 DSL 规范
+
+```yaml
+events:
+  - id: cut_in_01
+    type: cut_in
+    actor: cut_in_a          # ScenarioContext.tags 键名
+    trigger:
+      all:                   # 全部条件满足才触发 (AND)
+        - {metric: elapsed_s, op: ">=", value: 10}
+        - {metric: gap_m, op: "<=", value: 20}
+        - {metric: ttc_s, op: "<=", value: 4.0}
+    action:
+      tm:                    # 触发前 TM 参数
+        speed_diff_pct: -10
+        auto_lane_change: false
+      execute:               # 执行动作
+        force_lane_change: left
+      post:                  # 事件后 TM 参数
+        auto_lane_change: true
+        distance_to_leading_vehicle_m: 5.0
+    fallback:                # 物理接管回退
+      controller_override_window_s: 2.0
+      lane_change_profile: quintic
+    gate_min_ttc_s: 1.0      # 质量门禁
+    gate_max_gap_m: 25.0
+```
+
+**支持的触发指标**:
+| 指标 | 单位 | 说明 |
+|------|------|------|
+| `elapsed_s` | 秒 | 场景运行时间 |
+| `gap_m` | 米 | 纵向 bumper-to-bumper 间距 |
+| `ttc_s` | 秒 | 碰撞时间 (inf 表示远离) |
+| `lateral_offset_m` | 米 | 横向偏移 |
+
+### 8.3 指标计算 (metrics.py)
+
+```python
+def compute_metrics(ego, target, map_obj, frame_index, fps) -> ActorMetrics:
+    # 1. 获取 ego 前向向量 fwd = (fwd.x, fwd.y)
+    # 2. 计算 ego→target 向量 (dx, dy)
+    # 3. 纵向投影: longitudinal = dx*fwd.x + dy*fwd.y
+    # 4. Bumper-to-bumper: gap = |longitudinal| - ego_half - target_half
+    # 5. 前向速度: ego_fwd_speed, target_fwd_speed
+    # 6. 逼近速度: closing = ego_fwd_speed - target_fwd_speed
+    # 7. TTC: gap / closing (if closing > 0.1 else inf)
+```
+
+### 8.4 驱动后端
+
+| 后端 | 用途 | 控制方式 |
+|------|------|----------|
+| `TMBackend` | 默认 autopilot | TM 参数 + force_lane_change |
+| `ShortOverrideBackend` | 物理接管 | PID 速度 + quintic 横向轨迹 |
+
+**ShortOverrideBackend 运动学约束**:
+- `a_long_max`: 3.0 m/s²
+- `a_long_min`: -4.0 m/s²
+- `a_lat_max`: 4.0 m/s²
+- `jerk_max`: 10.0 m/s³
+- `steer_rate_max`: 0.3/帧
+
+### 8.5 事件状态机
+
+```
+pending ──(条件满足)──▶ triggered
+                            │
+            ┌───────────────┼───────────────┐
+            │ (无 fallback) │ (有 fallback) │
+            ▼               ▼               │
+         1s 后          override_active     │
+            │               │               │
+            └───────┬───────┘               │
+                    ▼                       │
+                  post ─────────────────────┘
+                    │
+                    ▼
+                  done
+```
+
+---
+
+## 9. 红绿灯处理
+
+### 9.1 组协调机制
+
+CARLA 红绿灯按交叉口分组，同组内灯通过 `pole_index` 标识方向:
+- `pole_index=0`: 主方向 (通常 Green)
+- `pole_index=1,2,3`: 其他方向 (通常 Red)
+
+**错误做法**:
+```python
+# 破坏组协调 — 所有灯同时绿
+for tl in traffic_lights:
+    tl.set_state(carla.TrafficLightState.Green)  # ❌
+```
+
+**正确做法**:
+```python
+# 只设置时序参数，保持组协调
+reset_groups = set()
+for tl in traffic_lights:
+    tl.set_red_time(red_s)
+    tl.set_green_time(green_s)
+    tl.set_yellow_time(yellow_s)
+    # 每组只 reset 一次
+    group_id = id(tuple(sorted(g.id for g in tl.get_group_traffic_lights())))
+    if group_id not in reset_groups:
+        tl.reset_group()  # ✓ 重启周期
+        reset_groups.add(group_id)
+```
+
+### 9.2 遥测红绿灯记录
+
+`telemetry.json` 每帧记录附近红绿灯状态:
+
+```json
+{
+  "frame": 100,
+  "traffic_lights": [
+    {
+      "id": 1505,
+      "state": "Red",
+      "position": {"x": -120.5, "y": 145.3, "z": 0.5},
+      "distance_to_ego": 19.3,
+      "pole_index": 1,
+      "group_ids": [1494, 1495, 1496, 1497, 1504, 1505, 1506],
+      "timing": {
+        "red_time": 2.0,
+        "green_time": 30.0,
+        "yellow_time": 1.0,
+        "elapsed_time": 5.2
+      }
+    }
+  ]
+}
+```
+
+**状态值**: `"Green"`, `"Yellow"`, `"Red"`, `"Off"`, `"Unknown"`
+
+### 9.3 周期时序配置
+
+CARLA 红绿灯周期按方向轮转，一个完整周期包含所有方向。
+
+**周期计算公式**:
+```
+完整周期 ≈ N × (green_time + yellow_time)
+最长等待 ≈ (N-1) × (green_time + yellow_time)
+```
+其中 N = 交叉口方向数（通常 3-4）
+
+**配置示例**:
+| green_time | N=3 周期 | 最长等待 | 适用场景 |
+|------------|----------|----------|----------|
+| 30s | 93s | ~62s | 真实交通模拟 |
+| 8s | 27s | ~18s | 快速测试 ✓ |
+| 5s | 18s | ~12s | 高速通过 |
+
+**配置位置** (`config_v3_quick.yaml`):
+```yaml
+scenario:
+  traffic_light_red_s: 2.0      # 红灯持续时间（影响较小）
+  traffic_light_green_s: 8.0    # 绿灯持续时间（关键参数）
+  traffic_light_yellow_s: 1.0   # 黄灯持续时间
+```
+
+**注意**: `red_time` 设置的是当该方向处于红灯状态时的"计时器"，但实际红灯持续时间取决于其他方向的绿灯+黄灯时长。
+
+---
+
+## 10. 已知局限与优化方向
 
 ### 编辑器
 0. **视图初始化**: 已修复 — 加载场景后自动调用 `_reset_view()` 适配所有 Actor 范围
@@ -537,7 +741,14 @@ Quick reference mapping each documentation section to source code entry points.
 | §4.5 Map data | `planning/map_exporter.py:126` | `export_map()`, `MapExportConfig`, `_lane_uid()` |
 | §5 Renderer | `render/renderer.py:123` | `render_plan()`, `_spawn_actor()`, `_first_transform()`, `_build_events()` |
 | §5 Replay | `render/replay_controller.py:17` | `TeleportFollower`, `build_follower()` |
-| §6 Comparison | — | **MISSING** — needs `tools/make_comparison.py` |
-| §7 Conversion | — | **MISSING** — needs `tools/convert_telemetry_to_scene.py` |
+| §6 Comparison | `tools/make_comparison.py` | `generate_comparison()`, `_plot_trajectory()` |
+| §7 Conversion | `tools/convert_telemetry_to_scene.py` | `convert_telemetry_to_scene()` |
+| §8.2 Event DSL | `director/event_dsl.py` | `EventSpec`, `TriggerSpec`, `parse_events()` |
+| §8.3 Metrics | `director/metrics.py` | `ActorMetrics`, `compute_metrics()` |
+| §8.4 Driver Backends | `driver_backends/tm_backend.py` | `TMBackend.configure()`, `force_lane_change()` |
+| §8.4 Override | `driver_backends/short_override.py` | `ShortOverrideBackend`, `_plan_lane_change()` |
+| §8.5 Director | `director/director.py` | `ScenarioDirector.tick()`, `EventState` |
+| §9.1 Traffic Light | `scenarios/lane_change_cut_in/scenario_v3.py:247` | `_configure_traffic_lights()` |
+| §9.2 TL Telemetry | `telemetry/recorder.py:350` | `_record_traffic_lights()` |
 
 All paths relative to `carla_experiment_client/`.

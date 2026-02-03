@@ -20,7 +20,7 @@ from .config import (
     load_scenario_config,
 )
 from .events.extractor import EventExtractor
-from .scenarios.registry import build_scenario, get_scenario_config_path, get_scenario_ids
+from .scenarios.registry import build_scenario, get_scenario_class_v3, get_scenario_config_path, get_scenario_ids
 from .sensors.camera_recorder import record_video
 from .telemetry import TelemetryRecorder
 from .utils import ensure_dir, utc_timestamp, write_json
@@ -232,6 +232,159 @@ def run_scenario(
         logging.info("Encoding master_video.mp4")
         encode_frames_to_mp4(frames_dir, out_dir / "master_video.mp4", config.fps)
         logging.info("Run complete: %s", out_dir)
+        return 0
+    finally:
+        if scenario_ctx is not None:
+            for actor in scenario_ctx.actors:
+                try:
+                    actor.destroy()
+                except RuntimeError:
+                    logging.warning("Actor cleanup skipped (already destroyed).")
+        restore_world(ctx)
+
+
+def run_scenario_v3(
+    scenario_path: Path,
+    out_dir: Path,
+    *,
+    host: str,
+    port: int,
+    tm_port: int,
+    timeout: float,
+    allow_version_mismatch: bool,
+    render_preset: str | None = None,
+    render_presets_path: Path | None = None,
+) -> int:
+    """Run a V3 Director-driven scenario.
+
+    Same as run_scenario() but:
+    1. Uses V3 scenario class (Director-based event triggering)
+    2. Tick order: director.tick → telemetry.tick → extractor.tick
+    3. Runs quality gate checks after completion
+    """
+    import json as _json
+    import random
+
+    from .director.gate_checks import run_all_gates, save_gate_report
+
+    config = load_scenario_config(scenario_path)
+    if render_preset:
+        if render_presets_path is None:
+            raise ValueError("render_presets_path is required when render_preset is set")
+        presets = load_render_presets(render_presets_path)
+        if render_preset not in presets:
+            raise ValueError(f"Unknown render preset: {render_preset}")
+        config = apply_render_preset(config, presets[render_preset])
+        logging.info("Applied render preset: %s", render_preset)
+    ensure_dir(out_dir)
+    shutil.copy2(scenario_path, out_dir / "scenario.yaml")
+    _attach_file_logger(out_dir)
+    logging.info("V3 Run pid=%s", os.getpid())
+    logging.info("Scenario config: %s", scenario_path)
+
+    ctx = setup_carla(
+        host,
+        port,
+        timeout,
+        tm_port,
+        map_name=config.map_name,
+        sync_mode=config.sync_mode,
+        fixed_delta_seconds=config.fixed_delta_seconds,
+        no_rendering_mode=config.no_rendering_mode,
+        seed=config.seed,
+        allow_version_mismatch=allow_version_mismatch,
+    )
+
+    scenario_ctx = None
+    try:
+        apply_weather(ctx.world, config.weather)
+
+        # Build scenario using V3 class
+        scenario_cls = get_scenario_class_v3(config.scenario_id)
+        if scenario_cls is None:
+            raise ValueError(f"No V3 scenario for: {config.scenario_id}")
+        rng = random.Random(config.seed)
+        scenario = scenario_cls(config)
+        logging.info("V3 scenario build start: %s", config.scenario_id)
+        scenario_ctx = scenario.build(ctx.world, ctx.traffic_manager, rng)
+        logging.info("V3 scenario build complete: %s", config.scenario_id)
+
+        extractor = EventExtractor(
+            world=ctx.world,
+            ego_vehicle=scenario_ctx.ego_vehicle,
+            map_obj=ctx.world.get_map(),
+            fps=config.fps,
+            voice_lead_time_s=config.voice_lead_time_s,
+            robot_precue_lead_s=config.robot_precue_lead_s,
+            min_event_time_s=config.min_event_time_s,
+            enabled_event_types=set(config.enabled_event_types or []) or None,
+            single_event_types=set(config.single_event_types or []),
+        )
+
+        telemetry = TelemetryRecorder(
+            world=ctx.world,
+            ego_vehicle=scenario_ctx.ego_vehicle,
+            fps=config.fps,
+            tracked_actors=scenario_ctx.actors,
+        )
+
+        def on_tick(snapshot: carla.WorldSnapshot, _: carla.Image, index: int) -> None:
+            # V3 tick order: director (via ctx.on_tick) → telemetry → extractor
+            scenario_ctx.on_tick(index)
+            telemetry.tick(snapshot, index)
+            extractor.tick(snapshot, index)
+
+        prewarm_seconds = config.params.get("prewarm_seconds")
+        if prewarm_seconds is not None:
+            prewarm_frames = int(round(float(prewarm_seconds) * config.fps))
+        else:
+            prewarm_frames = int(
+                config.params.get("prewarm_frames", max(1, int(config.fps * 0.5)))
+            )
+        if prewarm_frames > 0:
+            logging.info("Prewarming %d frames", prewarm_frames)
+            for _ in range(prewarm_frames):
+                ctx.world.tick()
+
+        total_frames = int(scenario_ctx.duration * scenario_ctx.fps)
+        logging.info("Recording %d frames at %d fps", total_frames, scenario_ctx.fps)
+        frames_dir = record_video(scenario_ctx, out_dir, on_tick=on_tick)
+        events = extractor.finalize()
+
+        write_json(out_dir / "events.json", {"events": events})
+        telemetry.save(out_dir)
+
+        # V3: Write director event log
+        director_list = scenario_ctx.tags.get("__director__", [])
+        if director_list:
+            director = director_list[0]
+            event_log = director.get_event_log()
+            write_json(out_dir / "director_events.json", {"events": event_log})
+            logging.info("Director events: %d", len(event_log))
+
+            # Quality gate checks
+            gate_report = run_all_gates(
+                director.get_event_states(),
+                out_dir / "telemetry.json",
+                config.fps,
+            )
+            save_gate_report(gate_report, out_dir)
+
+        _write_metadata(
+            out_dir,
+            config,
+            host,
+            port,
+            tm_port,
+            ctx.server_version,
+            ctx.client_version,
+            allow_version_mismatch,
+            render_preset,
+        )
+
+        logging.info("Encoding master_video.mp4")
+        encode_frames_to_mp4(frames_dir, out_dir / "master_video.mp4", config.fps)
+        logging.info("V3 run complete: %s", out_dir)
         return 0
     finally:
         if scenario_ctx is not None:

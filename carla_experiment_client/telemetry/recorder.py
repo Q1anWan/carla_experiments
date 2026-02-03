@@ -47,10 +47,11 @@ class TelemetryFrame:
     dt: float  # Delta time
     ego: Dict[str, Any] = field(default_factory=dict)
     actors: List[Dict[str, Any]] = field(default_factory=list)
+    traffic_lights: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        return {
+        d = {
             "frame": self.frame,
             "t_sim": round(self.t_sim, 3),
             "t_world": round(self.t_world, 3),
@@ -58,6 +59,9 @@ class TelemetryFrame:
             "ego": self.ego,
             "actors": self.actors,
         }
+        if self.traffic_lights:
+            d["traffic_lights"] = self.traffic_lights
+        return d
 
 
 # DocRef: technical_details.md#4.3
@@ -138,6 +142,10 @@ class TelemetryRecorder:
         if not self.config.enabled:
             return TelemetryFrame(frame=frame_index, t_sim=0, t_world=0, dt=0)
 
+        if not self.ego_vehicle.is_alive:
+            logging.warning("Ego vehicle destroyed at frame %d, stopping telemetry", frame_index)
+            return TelemetryFrame(frame=frame_index, t_sim=0, t_world=0, dt=0)
+
         t_world = snapshot.timestamp.elapsed_seconds
         dt = snapshot.timestamp.delta_seconds
         t_sim = frame_index / self.fps
@@ -182,6 +190,9 @@ class TelemetryRecorder:
         if self.config.include_actors:
             actor_records = self._record_actors(ego_state)
 
+        # Record nearby traffic light states
+        tl_records = self._record_traffic_lights(ego_state)
+
         frame_data = TelemetryFrame(
             frame=frame_index,
             t_sim=t_sim,
@@ -189,6 +200,7 @@ class TelemetryRecorder:
             dt=dt,
             ego=ego_dict,
             actors=actor_records,
+            traffic_lights=tl_records,
         )
         self._frames.append(frame_data)
         self._prev_time = t_world
@@ -334,6 +346,79 @@ class TelemetryRecorder:
 
         except RuntimeError:
             return None
+
+    def _record_traffic_lights(
+        self, ego_state: VehicleState
+    ) -> List[Dict[str, Any]]:
+        """Record state of nearby traffic lights.
+
+        Records traffic lights within actor_radius_m of ego vehicle,
+        including their state, group info, and timing.
+        """
+        records = []
+        if carla is None:
+            return records
+
+        ego_loc = carla.Location(
+            x=ego_state.world_x,
+            y=ego_state.world_y,
+            z=ego_state.world_z,
+        )
+
+        # Get all traffic lights
+        traffic_lights = self.world.get_actors().filter("traffic.traffic_light")
+
+        for tl in traffic_lights:
+            try:
+                tl_loc = tl.get_location()
+                dist = tl_loc.distance(ego_loc)
+
+                # Only record nearby traffic lights
+                if dist > self.config.actor_radius_m:
+                    continue
+
+                # Get state as string
+                state = tl.get_state()
+                state_str = {
+                    carla.TrafficLightState.Red: "Red",
+                    carla.TrafficLightState.Yellow: "Yellow",
+                    carla.TrafficLightState.Green: "Green",
+                    carla.TrafficLightState.Off: "Off",
+                    carla.TrafficLightState.Unknown: "Unknown",
+                }.get(state, "Unknown")
+
+                # Get group info
+                group_lights = tl.get_group_traffic_lights()
+                group_ids = sorted([g.id for g in group_lights])
+                pole_index = tl.get_pole_index()
+
+                record = {
+                    "id": tl.id,
+                    "state": state_str,
+                    "position": {
+                        "x": round(tl_loc.x, 2),
+                        "y": round(tl_loc.y, 2),
+                        "z": round(tl_loc.z, 2),
+                    },
+                    "distance_to_ego": round(dist, 2),
+                    "pole_index": pole_index,
+                    "group_ids": group_ids,
+                    "timing": {
+                        "red_time": round(tl.get_red_time(), 1),
+                        "green_time": round(tl.get_green_time(), 1),
+                        "yellow_time": round(tl.get_yellow_time(), 1),
+                        "elapsed_time": round(tl.get_elapsed_time(), 2),
+                    },
+                }
+                records.append(record)
+
+            except RuntimeError:
+                # Traffic light may have been destroyed
+                continue
+
+        # Sort by distance to ego
+        records.sort(key=lambda r: r["distance_to_ego"])
+        return records
 
     def save(self, output_dir: Path) -> Dict[str, Path]:
         """Save telemetry data to files.

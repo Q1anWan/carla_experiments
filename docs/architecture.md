@@ -3,6 +3,29 @@
 This document describes the program logic, module responsibilities, and public interfaces.
 It is intended to help AI agents modify the project safely.
 
+## Version History
+
+| 版本 | 分支 | 特性 | 状态 |
+|------|------|------|------|
+| **V1** | `main` | 基于帧号的硬编码事件触发，Teleport 轨迹跟踪 | 稳定 |
+| **V2** | `feature/v2-*` | 基于 scene_edit.json 的关键帧编辑器，线性插值轨迹 | 稳定 |
+| **V3** | `feature/v3-director` | 条件触发的事件 DSL，Director 编排器，Traffic Manager + Override 混合驱动 | **当前开发** |
+
+### V1 → V2 主要变更
+- 新增 `interactive_editor.py` 可视化关键帧编辑器
+- 新增 `scene_edit.json` 场景描述格式
+- 轨迹生成: 硬编码 → 关键帧插值
+
+### V2 → V3 主要变更
+- 事件触发: 帧号硬编码 → 条件 DSL (`trigger.all`, `metric`, `op`, `value`)
+- 驱动后端: 纯 TM → TM + ShortOverrideBackend 混合
+- 新增 `director/` 模块: event_dsl, metrics, director, gate_checks
+- 新增 `driver_backends/` 模块: tm_backend, short_override
+- 红绿灯: 全绿覆盖 → 组协调 + 周期配置
+- 遥测: 新增 `traffic_lights` 字段
+
+---
+
 ## 1) Runtime data flow (Plan -> Validate -> Render)
 
 1. `map_exporter` generates map assets (centerlines, junctions, spawn candidates).
@@ -11,7 +34,33 @@ It is intended to help AI agents modify the project safely.
 4. `renderer` replays trajectories in CARLA, records video and telemetry.
 5. Outputs are written under `outputs/<episode_id>/` (plan, events, validation, video, telemetry).
 
-## 2) Runtime data flow (legacy run_scenario)
+## 2) Runtime data flow (V3 Director 模式)
+
+V3 使用条件触发的事件编排系统，替代基于帧号的硬编码触发。
+
+1. CLI 加载 V3 场景 YAML（含 `execution_mode: v3` 和 `events` DSL）。
+2. CARLA 连接建立，配置同步模式 + 固定时间步长。
+3. 场景构建:
+   - 生成 ego、事件 Actor（cut_in_a/b/c 等）、背景交通。
+   - 配置红绿灯时序（保持组协调）。
+   - 初始化 `ScenarioDirector`，解析事件 DSL。
+4. Prewarm 阶段 tick 世界。
+5. 录制主循环（每帧）:
+   - `director.tick()`: 计算指标 → 评估触发条件 → 执行事件动作。
+   - `telemetry.tick()`: 记录 ego/actors/traffic_lights 状态。
+   - 相机录制帧。
+6. 输出: video, telemetry.json/csv, director_events.json, gate_report.json。
+7. 清理 Actor，恢复世界设置。
+
+### Director 事件状态机
+
+```
+pending ──(trigger)──▶ triggered ──(TM action)──▶ post ──▶ done
+                              │
+                              └──(fallback)──▶ override_active ──▶ post
+```
+
+## 2.1) Runtime data flow (legacy run_scenario)
 
 1. CLI loads a scenario YAML and optional render preset.
 2. CARLA connection is created and world settings are applied (sync + fixed delta).
@@ -27,7 +76,8 @@ It is intended to help AI agents modify the project safely.
 
 - `cli.py` / `carla_experiment_client/cli.py`
   - Unified CLI (menu + subcommands).
-  - Subcommands: `map`, `plan`, `validate`, `render`, `pipeline`, `preview`, `editor`, `suite`.
+  - Subcommands: `map`, `plan`, `validate`, `render`, `pipeline`, `preview`, `editor`, `suite`, `run-v3`, `compare`, `convert`.
+  - `run-v3`: V3 Director 模式运行场景（条件触发事件）。
   - Supports headless editor export with `--headless`.
 
 - `runner.py`
@@ -93,6 +143,33 @@ It is intended to help AI agents modify the project safely.
 - `interactive_editor.py`: keyframe-based scene editor + export.
 - `mvp.py`: 2D preview renderer for `plan.json`.
 
+### `carla_experiment_client/director/*` (V3)
+- `event_dsl.py`: 事件 DSL 解析器（YAML → 类型化 dataclass）。
+  - `EventSpec`, `TriggerSpec`, `TriggerCondition`, `TMAction`, `OverrideFallback`。
+  - `parse_events(raw_list)`: 解析 YAML 事件列表。
+- `metrics.py`: Actor 间指标计算。
+  - `ActorMetrics`: gap_m, ttc_s, lateral_offset_m, speeds。
+  - `compute_metrics(ego, target, map_obj, frame, fps)`: 实时指标。
+- `director.py`: 核心编排器 `ScenarioDirector`。
+  - `tick(frame_index)`: 评估触发条件，执行事件动作。
+  - `get_event_log()`: 导出事件日志。
+- `gate_checks.py`: 质量门禁检查（TTC/gap 阈值）。
+
+### `carla_experiment_client/driver_backends/*` (V3)
+- `base.py`: `DriverBackend` 抽象基类。
+  - `run_step(vehicle, frame, dt) -> VehicleControl | None`
+  - `activate(vehicle)`, `deactivate(vehicle)`, `is_done`
+- `tm_backend.py`: Traffic Manager 驱动后端。
+  - `configure(vehicle, TMAction)`: 应用 TM 参数。
+  - `force_lane_change(vehicle, direction)`: 强制换道。
+- `short_override.py`: 短时物理接管控制器。
+  - PID 速度控制 + quintic 横向轨迹。
+  - 运动学约束: a_long, a_lat, jerk, steer_rate 限幅。
+
+### `carla_experiment_client/control/*` (V3)
+- `pid.py`: `PIDController` 通用 PID 控制器。
+  - Anti-windup, 输出限幅, 微分滤波。
+
 ### `carla_experiment_client/carla_client.py`
 - Responsibility: connect to CARLA, load map, apply sync settings, configure Traffic Manager.
 - Key functions:
@@ -135,6 +212,14 @@ It is intended to help AI agents modify the project safely.
   - `finalize()` returns events list.
 - Events include: `lane_change_left/right`, `brake_hard`, `slow_down`, `stop_for_red_light`, `yield_to_emergency`, `avoid_pedestrian`.
 
+### `carla_experiment_client/telemetry/*`
+- `recorder.py`: 遥测记录器 `TelemetryRecorder`。
+  - `tick(snapshot, frame)`: 记录 ego、actors、traffic_lights 状态。
+  - `save(output_dir)`: 输出 telemetry.json + telemetry.csv。
+  - 红绿灯记录: id, state, pole_index, group_ids, timing (elapsed_time)。
+- `sae_j670.py`: SAE J670 坐标系变换器。
+  - `SAEJ670Transformer.compute_state(vehicle, dt) -> VehicleState`
+
 ### `carla_experiment_client/scenarios/*`
 - Responsibility: spawn actors and define per-frame behavior.
 - `BaseScenario` helper methods:
@@ -142,6 +227,7 @@ It is intended to help AI agents modify the project safely.
   - `find_spawn_point(...)` selects spawn points based on lane/junction constraints.
 - Each scenario implements `build(world, tm, rng) -> ScenarioContext`.
 - Scenario registry: `scenarios/registry.py` maps scenario id to class.
+- V3 场景: 使用 `_configure_traffic_lights()` 配置红绿灯时序，保持组协调。
 
 ### `carla_experiment_client/weather.py`
 - Responsibility: apply weather presets by name.
@@ -179,6 +265,11 @@ A run directory includes:
 - `run_metadata.json`: run metadata (map, seed, fps, render_preset, versions).
 - `frames/`: raw PNG frames (optional).
 - `master_video.mp4`: visual-only master.
+
+V3 run directory 额外包含:
+- `director_events.json`: Director 事件状态日志。
+- `gate_report.json`: 质量门禁检查结果。
+- `telemetry.json`: 含 `traffic_lights` 字段记录红绿灯状态。
 
 Variant rendering adds:
 - `variants/voice{v}_robot{r}/stimulus.mp4` (if audio enabled)

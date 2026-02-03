@@ -327,6 +327,39 @@ def do_bundle(args: argparse.Namespace) -> None:
         print(f"  {name}")
 
 
+def do_run_v3(args: argparse.Namespace, globals_cfg: Dict[str, Any]) -> None:
+    """Run a V3 Director-driven scenario."""
+    from .config import apply_client_overrides, load_client_config
+    from .run_scenario import resolve_scenario_path, run_scenario_v3
+    from .utils import utc_timestamp
+
+    carla_cfg = globals_cfg.get("carla", {}) if isinstance(globals_cfg, dict) else {}
+    client_config = load_client_config(Path(args.client_config))
+    client_config = apply_client_overrides(
+        client_config,
+        host=args.host or carla_cfg.get("host"),
+        port=args.port or carla_cfg.get("port"),
+        tm_port=getattr(args, "tm_port", None) or carla_cfg.get("tm_port"),
+        timeout=args.timeout or carla_cfg.get("timeout_s"),
+        allow_version_mismatch=args.allow_version_mismatch,
+    )
+
+    out_dir = Path(args.out) if args.out else Path("runs") / utc_timestamp()
+    scenario_path = resolve_scenario_path(args.scenario)
+
+    run_scenario_v3(
+        scenario_path,
+        out_dir,
+        host=client_config.host,
+        port=client_config.port,
+        tm_port=client_config.tm_port,
+        timeout=client_config.timeout,
+        allow_version_mismatch=client_config.allow_version_mismatch,
+        render_preset=args.render_preset if hasattr(args, "render_preset") else None,
+        render_presets_path=Path(args.render_presets) if hasattr(args, "render_preset") and args.render_preset else None,
+    )
+
+
 def do_test(_args: argparse.Namespace) -> None:
     from .editor import test_editor
     test_editor.run_all_tests()
@@ -590,6 +623,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     test_cmd = subparsers.add_parser("test", help="Run automated editor tests")
 
+    # V3 Director-driven scenario runner
+    v3_cmd = subparsers.add_parser("run-v3", help="Run V3 Director-driven scenario")
+    v3_cmd.add_argument("--scenario", required=True, help="Scenario ID or path to YAML config")
+    v3_cmd.add_argument("--out", type=str, help="Output directory")
+    v3_cmd.add_argument("--host")
+    v3_cmd.add_argument("--port", type=int)
+    v3_cmd.add_argument("--tm-port", type=int)
+    v3_cmd.add_argument("--timeout", type=float)
+    v3_cmd.add_argument("--render-preset", help="Render preset name")
+    v3_cmd.add_argument("--render-presets", type=str, default="configs/render_presets.yaml")
+    v3_cmd.add_argument("--client-config", type=str, default="configs/client.yaml")
+    v3_cmd.add_argument("--allow-version-mismatch", action="store_true", default=False)
+
     return parser
 
 
@@ -640,6 +686,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 0
     if args.command == "test":
         do_test(args)
+        return 0
+    if args.command == "run-v3":
+        do_run_v3(args, globals_cfg)
         return 0
 
     return 1

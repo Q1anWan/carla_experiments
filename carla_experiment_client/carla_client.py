@@ -65,8 +65,11 @@ def load_world(client: carla.Client, map_name: Optional[str]) -> carla.World:
     except RuntimeError:
         current_map = ""
     if current_map and _map_matches(current_map, map_name):
-        logging.info("Map already loaded: %s", current_map)
-        return current_world
+        logging.info("Map already loaded: %s — reloading to reset state", current_map)
+        client.reload_world()
+        import time
+        time.sleep(2)
+        return client.get_world()
     logging.info("Loading map %s", map_name)
     return client.load_world(map_name)
 

@@ -11,7 +11,7 @@ import carla
 
 from ..config import ScenarioConfig
 from .highway_merge import HighwayMergeScenario
-from .lane_change_cut_in import LaneChangeCutInScenario
+from .lane_change_cut_in import LaneChangeCutInScenario, LaneChangeCutInV3
 from .pedestrian_emerge import PedestrianEmergeScenario
 from .red_light_conflict import RedLightConflictScenario
 from .unprotected_left_turn import UnprotectedLeftTurnScenario
@@ -29,6 +29,16 @@ _SCENARIOS = {
     "yield_to_emergency": YieldToEmergencyScenario,
     "pedestrian_emerge": PedestrianEmergeScenario,
 }
+
+# V3 Director-driven scenarios (condition-based triggering)
+_SCENARIOS_V3 = {
+    "lane_change_cut_in": LaneChangeCutInV3,
+}
+
+
+def get_scenario_class_v3(scenario_id: str):
+    """Get V3 scenario class, falling back to V1 if not available."""
+    return _SCENARIOS_V3.get(scenario_id, _SCENARIOS.get(scenario_id))
 
 
 def get_scenario_ids() -> list[str]:
@@ -50,7 +60,7 @@ def get_scenario_config_path(
     Returns:
         Path to the config YAML file, or None if not found.
     """
-    if scenario_id not in _SCENARIOS:
+    if scenario_id not in _SCENARIOS and scenario_id not in _SCENARIOS_V3:
         return None
     scenario_dir = SCENARIOS_DIR / scenario_id
     config_path = scenario_dir / f"{variant}.yaml"
